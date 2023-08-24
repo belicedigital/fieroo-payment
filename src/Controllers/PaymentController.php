@@ -30,12 +30,9 @@ class PaymentController extends Controller
     {
         // $this->middleware('auth');
         $this->gateway = Omnipay::create('PayPal_Rest');
-        // $this->gateway->setClientId(env('PAYPAL_CLIENT_ID'));
-        // $this->gateway->setSecret(env('PAYPAL_CLIENT_SECRET'));
-        // $this->gateway->setTestMode(true);
-        $this->gateway->setClientId(config('payment.PAYPAL_CLIENT_ID'));
-        $this->gateway->setSecret(config('payment.PAYPAL_CLIENT_SECRET'));
-        $this->gateway->setTestMode(config('payment.PAYPAL_TEST_MODE'));
+        $this->gateway->setClientId(env('PAYPAL_CLIENT_ID'));
+        $this->gateway->setSecret(env('PAYPAL_CLIENT_SECRET'));
+        $this->gateway->setTestMode(true);
     }
 
     public function pay(Request $request)
@@ -70,8 +67,7 @@ class PaymentController extends Controller
 
             $response = $this->gateway->purchase([
                 'amount' => $amount,
-                // 'currency' => env('PAYPAL_CURRENCY'),
-                'currency' => config('payment.PAYPAL_CURRENCY'),
+                'currency' => env('PAYPAL_CURRENCY'),
                 'returnUrl' => url('/admin/paypal/success'),
                 'cancelUrl' => url('/admin/paypal/error'),
             ])->send();
@@ -143,8 +139,7 @@ class PaymentController extends Controller
             if($tot > 0) {
                 $response = $this->gateway->purchase([
                     'amount' => $tot,
-                    // 'currency' => env('PAYPAL_CURRENCY'),
-                    'currency' => config('payment.PAYPAL_CURRENCY'),
+                    'currency' => env('PAYPAL_CURRENCY'),
                     'returnUrl' => url('/admin/paypal/success-furnishings'),
                     'cancelUrl' => url('/admin/paypal/error'),
                 ])->send();
@@ -319,8 +314,7 @@ class PaymentController extends Controller
                     $payment->payer_id = $arr['payer']['payer_info']['payer_id'];
                     $payment->payer_email = $arr['payer']['payer_info']['email'];
                     $payment->amount = $arr['transactions'][0]['amount']['total'];
-                    // $payment->currency = env('PAYPAL_CURRENCY');
-                    $payment->currency = config('payment.PAYPAL_CURRENCY');
+                    $payment->currency = env('PAYPAL_CURRENCY');
                     $payment->payment_status = $arr['state'];
                     $payment->event_id = $purchase_data['event_id'];
                     $payment->user_id = $purchase_data['user_id'];
@@ -411,8 +405,7 @@ class PaymentController extends Controller
                     $payment->payer_id = $arr['payer']['payer_info']['payer_id'];
                     $payment->payer_email = $arr['payer']['payer_info']['email'];
                     $payment->amount = $arr['transactions'][0]['amount']['total'];
-                    // $payment->currency = env('PAYPAL_CURRENCY');
-                    $payment->currency = config('payment.PAYPAL_CURRENCY');
+                    $payment->currency = env('PAYPAL_CURRENCY');
                     $payment->payment_status = $arr['state'];
                     $payment->event_id = $purchase_data['event_id'];
                     $payment->user_id = $purchase_data['user_id'];
