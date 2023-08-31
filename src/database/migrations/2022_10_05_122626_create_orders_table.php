@@ -17,8 +17,8 @@ class CreateOrdersTable extends Migration
             $table->id();
             $table->unsignedBigInteger('exhibitor_id');
             $table->foreign('exhibitor_id')->references('id')->on('exhibitors')->onDelete('cascade');
-            $table->unsignedBigInteger('code_module_id');
-            $table->foreign('code_module_id')->references('id')->on('code_modules')->onDelete('cascade');
+            // $table->unsignedBigInteger('code_module_id');
+            // $table->foreign('code_module_id')->references('id')->on('code_modules')->onDelete('cascade');
             $table->unsignedBigInteger('furnishing_id');
             $table->foreign('furnishing_id')->references('id')->on('furnishings')->onDelete('cascade');
             $table->integer('qty');
