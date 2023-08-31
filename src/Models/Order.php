@@ -13,7 +13,6 @@ class Order extends Model
 
     protected $fillable = [
         'exhibitor_id',
-        // 'code_module_id',
         'furnishing_id',
         'qty',
         'is_supplied',

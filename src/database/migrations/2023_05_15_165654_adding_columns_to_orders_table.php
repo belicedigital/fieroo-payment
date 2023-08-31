@@ -18,8 +18,6 @@ class AddingColumnsToOrdersTable extends Migration
             $table->foreign('event_id')->references('id')->on('events')->onDelete('cascade');
             $table->unsignedBigInteger('payment_id');
             $table->foreign('payment_id')->references('id')->on('payments')->onDelete('cascade');
-            // $table->dropForeign(['code_module_id']);
-            // $table->dropColumn(['code_module_id']);
         });
     }
 
@@ -33,8 +31,6 @@ class AddingColumnsToOrdersTable extends Migration
         Schema::table('orders', function (Blueprint $table) {
             $table->dropForeign(['event_id', 'payment_id']);
             $table->dropColumn(['event_id', 'payment_id']);
-            // $table->unsignedBigInteger('code_module_id');
-            // $table->foreign('code_module_id')->references('id')->on('code_modules')->onDelete('cascade');
         });
     }
 }
