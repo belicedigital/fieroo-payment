@@ -10,7 +10,10 @@
     "autoload": {
         "psr-4": {
             "Fieroo\\Payment\\": "src/"
-        }
+        },
+        "files": [
+            "src/helpers.php"
+        ]
     },
     "authors": [
         {
