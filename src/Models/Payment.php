@@ -5,7 +5,7 @@ namespace Fieroo\Payment\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Fieroo\Payment\Models\Order;
-use App\Models\User;
+use Fieroo\Bootstrapper\Models\User;
 
 class Payment extends Model
 {
