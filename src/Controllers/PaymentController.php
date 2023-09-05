@@ -451,10 +451,19 @@ class PaymentController extends Controller
                     //     'tot' => $purchase_data['tot']
                     // ];
 
+                    $orders_txt = '<dl>';
+                    foreach($orders as $order) {
+                        $orders_txt .= '<dd>'.trans('entities.furnishing', [], $exhibitor->locale).': '.$order->description.'</dd>';
+                        $orders_txt .= '<dd>'.trans('tables.color', [], $exhibitor->locale).': '.$order->color.'</dd>';
+                        $orders_txt .= '<dd>'.trans('tables.qty', [], $exhibitor->locale).': '.$order->qty.'</dd>';
+                        $orders_txt .= '<dd>'.trans('tables.price', [], $exhibitor->locale).': '.$order->price.'</dd>';
+                    }
+                    $orders_txt .= '</dl>';
+
                     $setting = Setting::take(1)->first();
 
                     $body = formatDataForEmail([
-                        'orders' => $orders,
+                        'orders' => $orders_txt,
                         'tot' => $purchase_data['tot'],
                     ], $exhibitor->locale == 'it' ? $setting->email_confirm_order_it : $setting->email_confirm_order_en);
 
@@ -493,8 +502,17 @@ class PaymentController extends Controller
                     //     'tot' => $purchase_data['tot']
                     // ];
 
+                    $orders_txt = '<dl>';
+                    foreach($orders as $order) {
+                        $orders_txt .= '<dd>Arredo: '.$order->description.'</dd>';
+                        $orders_txt .= '<dd>Colore: '.$order->color.'</dd>';
+                        $orders_txt .= '<dd>Quantità: '.$order->qty.'</dd>';
+                        $orders_txt .= '<dd>Prezzo: '.$order->price.'</dd>';
+                    }
+                    $orders_txt .= '</dl>';
+
                     $body = formatDataForEmail([
-                        'orders' => $orders,
+                        'orders' => $orders_txt,
                         'tot' => $purchase_data['tot'],
                         'company' => $exhibitor->detail->company,
                     ], $setting->email_to_admin_notification_confirm_order);
