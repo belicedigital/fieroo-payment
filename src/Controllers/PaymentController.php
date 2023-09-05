@@ -16,6 +16,7 @@ use Validator;
 use DB;
 use Session;
 use Mail;
+use \Carbon\Carbon;
 
 class PaymentController extends Controller
 {
@@ -346,8 +347,8 @@ class PaymentController extends Controller
 
                     $body = formatDataForEmail([
                         'event_title' => $event->title,
-                        'event_start' => $event->start,
-                        'event_end' => $event->end,
+                        'event_start' => Carbon::parse($event->start)->format('d/m/Y'),
+                        'event_end' => Carbon::parse($event->end)->format('d/m/Y'),
                         'responsible' => $exhibitor->detail->responsible,
                     ], $exhibitor->locale == 'it' ? $setting->email_event_subscription_it : $setting->email_event_subscription_en);
 
