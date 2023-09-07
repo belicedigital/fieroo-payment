@@ -439,6 +439,7 @@ class PaymentController extends Controller
                                 ->orOn('furnishings.variant_id', '=', 'furnishings_translations.furnishing_id');
                         })
                         ->where([
+                            ['orders.payment_id', '=', $payment->id],
                             ['orders.exhibitor_id', '=', $exhibitor->id],
                             ['furnishings_translations.locale', '=', $exhibitor->locale]
                         ])
@@ -490,6 +491,7 @@ class PaymentController extends Controller
                                 ->orOn('furnishings.variant_id', '=', 'furnishings_translations.furnishing_id');
                         })
                         ->where([
+                            ['orders.payment_id', '=', $payment->id],
                             ['orders.exhibitor_id', '=', $exhibitor->id],
                             ['furnishings_translations.locale', '=', 'it']
                         ])
