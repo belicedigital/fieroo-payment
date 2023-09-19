@@ -1,6 +1,7 @@
 <?php
 use Illuminate\Support\Facades\Route;
 use Fieroo\Payment\Controllers\PaymentController;
+use Fieroo\Payment\Controllers\StripePaymentController;
 
 Route::group(['prefix' => 'admin', 'middleware' => ['web','auth']], function() {
     Route::group(['prefix' => 'paypal'], function() {
@@ -10,4 +11,5 @@ Route::group(['prefix' => 'admin', 'middleware' => ['web','auth']], function() {
         Route::get('/success-furnishings', [PaymentController::class, 'successFurnishings']);
         Route::get('/error', [PaymentController::class, 'error']);
     });
+    Route::post('stripe-payment', [StripePaymentController::class, 'payment'])->name('stripe-payment');
 });
