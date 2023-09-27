@@ -5,7 +5,8 @@
     "license": "EULA",
     "require": {
         "league/omnipay": "^3",
-        "omnipay/paypal": "^3.0"
+        "omnipay/paypal": "^3.0",
+        "laravel/cashier": "^13.17"
     },
     "autoload": {
         "psr-4": {
