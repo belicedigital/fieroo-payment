@@ -4,14 +4,12 @@ namespace Fieroo\Payment\Controllers;
 
 use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
-// use Illuminate\Support\Facades\App;
 use Fieroo\Payment\Models\Payment;
 use Fieroo\Events\Models\Event;
 use Fieroo\Payment\Models\Order;
 use Fieroo\Exhibitors\Models\Exhibitor;
 use Fieroo\Bootstrapper\Models\Setting;
 use Fieroo\Stands\Models\StandsTypeTranslation;
-use Illuminate\Support\Facades\App;
 use Validator;
 use DB;
 use Mail;
@@ -22,21 +20,9 @@ class StripePaymentController extends Controller
     public function payment(Request $request)
     {
         try {
+
             $exhibitor = auth()->user()->exhibitor;
-
-            $validation_data = [
-                'stand_selected' => ['required', 'exists:stands_types,id'],
-                'modules_selected' => ['required', 'numeric', 'min:1']
-            ];
-
-            $validator = Validator::make($request->all(), $validation_data);
             $event = Event::findOrFail($request->event_id)->first();
-
-            if ($validator->fails()) {
-                return redirect()
-                    ->back()
-                    ->withErrors(trans('generals.pay_validation_wrong'));
-            }
 
             $stand = StandsTypeTranslation::where([
                 ['stand_type_id', '=', $request->stand_selected],
@@ -45,106 +31,74 @@ class StripePaymentController extends Controller
 
             $price = $stand->price * 100; // * 100 because stripe calc 1 => 0,01 cent
             $amount = $price * $request->modules_selected;
+            $currency = env('CASHIER_CURRENCY');
 
             // if is not a customer is created
             $customer = $exhibitor->createOrGetStripeCustomer();
-
-            // updt customer data
-            $exhibitor_detail = $exhibitor->detail;
-            $data_for_billing = [
-                'address' => [
-                    'city' => $exhibitor_detail->city,
-                    'postal_code' => $exhibitor_detail->cap,
-                    'state' => $exhibitor_detail->province,
-                    'line1' => $exhibitor_detail->address.', '.$exhibitor_detail->civic_number,
-                ],
-                'email' => $exhibitor->user->email,
-                'name' => $exhibitor_detail->responsible,
-                'phone' => $exhibitor_detail->phone_responsible,
-                'preferred_locales' => [ $exhibitor->locale ],
-            ];
-            $vat_number = $exhibitor_detail->vat_number;
-            if($exhibitor_detail->diff_billing) {
-                $data_for_billing = [
-                    'address' => [
-                        'city' => $exhibitor_detail->receiver_city,
-                        'postal_code' => $exhibitor_detail->receiver_cap,
-                        'state' => $exhibitor_detail->receiver_province,
-                        'line1' => $exhibitor_detail->receiver_address.', '.$exhibitor_detail->receiver_civic_number,
-                    ],
-                    'email' => $exhibitor->user->email,
-                    'name' => $exhibitor_detail->responsible,
-                    'phone' => $exhibitor_detail->phone_responsible,
-                    'preferred_locales' => [ $exhibitor->locale ],
-                ];
-                $vat_number = $exhibitor_detail->receiver_vat_number;
-            }
-
-            $exhibitor->updateStripeCustomer($data_for_billing);
-
-            if($exhibitor->taxIds()->count() <= 0) {
-                $exhibitor->createTaxId('eu_vat', $vat_number);
-            }
+            $authUser = auth()->user();
 
             $totalPrice = $stand->price * $request->modules_selected;
 
-            $stripeCharge = $request->user()->exhibitor->charge(
-                $amount, $request->paymentMethodId, [
-                    'customer' => $customer->id,
-                    'receipt_email' => auth()->user()->email,
-                    'metadata' => [
-                        'type_of_payment' => 'event_subscription',
-                        'stand_id' => $stand->stand_type_id,
-                        'qty' => $request->modules_selected,
-                        'single_price' => $stand->price,
-                        'total_price' => $totalPrice,
-                    ]
-                ]
+            $validation_data = [
+                'stand_selected' => ['required', 'exists:stands_types,id'],
+                'modules_selected' => ['required', 'numeric', 'min:1']
+            ];
+
+            $validator = $this->validationData($validation_data, $request);
+
+            if ($validator->fails()) {
+                return redirect()
+                    ->back()
+                    ->withErrors(trans('generals.pay_validation_wrong'));
+            }
+
+            // updt customer data
+            $this->updateStripeCustomerData($exhibitor);
+
+            //Charge with Stripe
+            $stripeMetadata = [
+                'type_of_payment' => 'event_subscription',
+                'stand_id' => $stand->stand_type_id,
+                'qty' => $request->modules_selected,
+                'single_price' => $stand->price,
+                'total_price' => $totalPrice,
+            ];
+
+            $stripeCharge = $this->chargeStripe(
+                $request->user(),
+                $amount,
+                $request->paymentMethodId,
+                $customer,
+                $stripeMetadata
             );
 
             // Ottenere i dati del cliente da Stripe
             $stripeCustomer = $request->user()->exhibitor->asStripeCustomer();
 
-            $payment = new Payment();
-            $payment->payment_id = $stripeCharge->id; // ID della transazione Stripe
-            $payment->payer_id = $stripeCustomer->id; // ID del cliente Stripe
-            $payment->payer_email = auth()->user()->email; // Email dell'utente
-            $payment->amount = $totalPrice; // Importo dell'ordine
-            $payment->currency = env('CASHIER_CURRENCY'); // Valuta dell'ordine
-            $payment->payment_status = 'succeeded'; // Stato del pagamento (puoi estrarlo da $stripeCharge)
-            $payment->event_id = $request->event_id; // ID dell'evento correlato all'ordine
-            $payment->user_id = auth()->user()->id; // ID dell'utente che ha effettuato il pagamento
-            $payment->stand_type_id = $request->stand_selected; // ID del tipo di stand
-            $payment->n_modules = $request->modules_selected; // Puoi impostare questo valore in base alle tue esigenze
-            $payment->type_of_payment = $request->type_of_payment;
-            $payment->save();
+            //Insert payment in DB
+            $this->insertPayment($stripeCharge, $stripeCustomer, $authUser, $request, $currency, $totalPrice, $request->stand_selected, $request->modules_selected);
 
-            $updt_exhibitor = Exhibitor::findOrFail($exhibitor->id);
-            $updt_exhibitor->pm_type = $stripeCharge->charges->data[0]->payment_method_details->type;
-            $updt_exhibitor->pm_last_four = $stripeCharge->charges->data[0]->payment_method_details->card->last4;
-            $updt_exhibitor->save();
+            //Update Exhibitor payment data
+            $this->updateExhibitor($exhibitor, $stripeCharge);
 
             // send email to user for subscription
-            $email_from = env('MAIL_FROM_ADDRESS');
-            $email_to = auth()->user()->email;
             $subject = trans('emails.event_subscription', [], $exhibitor->locale);
+            $email_from = env('MAIL_FROM_ADDRESS');
+            $email_to = $authUser->email;
             $setting = Setting::take(1)->first();
-
+            $emailTemplate = $exhibitor->locale == 'it' ? $setting->email_event_subscription_it : $setting->email_event_subscription_en;
             $body = formatDataForEmail([
                 'event_title' => $event->title,
                 'event_start' => Carbon::parse($event->start)->format('d/m/Y'),
                 'event_end' => Carbon::parse($event->end)->format('d/m/Y'),
                 'responsible' => $exhibitor->detail->responsible,
-            ], $exhibitor->locale == 'it' ? $setting->email_event_subscription_it : $setting->email_event_subscription_en);
+            ], $emailTemplate);
 
             $data = [
                 'body' => $body
             ];
 
-            Mail::send('emails.form-data', ['data' => $data], function ($m) use ($email_from, $email_to, $subject) {
-                $m->from($email_from, env('MAIL_FROM_NAME'));
-                $m->to($email_to)->subject(env('APP_NAME').' '.$subject);
-            });
+           $this->sendEmail($subject, $data, $email_from, $email_to);
 
             return redirect('admin/dashboard/')
                 ->with('success', trans('generals.payment_subscription_ok', ['event' => $event->title]));
@@ -165,183 +119,103 @@ class StripePaymentController extends Controller
                 'type_of_payment' => ['required', 'string'],
                 'data' => ['required', 'json']
             ];
-    
-            $validator = Validator::make($request->all(), $validation_data);
-    
+
+            $authUser = auth()->user();
+            $exhibitor = auth()->user()->exhibitor;
+            $currency = env('CASHIER_CURRENCY');
+            $event = Event::findOrFail($request->event_id)->first();
+            $rows = json_decode($request->data);
+
+            //Get total of items
+            $tot = 0;
+            foreach($rows as $row) {
+                $tot += $row->price;
+            }
+
+            $validator = $this->validationData($validation_data, $request);
+
             if ($validator->fails()) {
                 return redirect()
                     ->back()
                     ->withErrors(trans('generals.pay_validation_wrong'));
             }
 
-            $event = Event::findOrFail($request->event_id);
-
-            $stand = StandsTypeTranslation::where([
-                ['stand_type_id', '=', $request->stand_type_id],
-                ['locale', '=', auth()->user()->exhibitor->locale]
-            ])->firstOrFail();
-
-            $rows = json_decode($request->data);
-            $tot = 0;
-            foreach($rows as $row) {
-                $tot += $row->price;
-            }
-
             if($tot > 0) {
                 $amount = $tot * 100; // * 100 per stripe
-                $stripeCharge = auth()->user()->exhibitor->charge(
-                    $amount, $request->paymentMethodId, [
-                        'customer' => auth()->user()->exhibitor->stripe_id,
-                        'receipt_email' => auth()->user()->email,
-                        'metadata' => [
-                            'type_of_payment' => 'furnishing_payment',
-                        ]
-                    ]
-                );
-
-                // Ottenere i dati del cliente da Stripe
-                $stripeCustomer = auth()->user()->exhibitor->asStripeCustomer();
-
-                $payment = new Payment();
-                $payment->payment_id = $stripeCharge->id; // ID della transazione Stripe
-                $payment->payer_id = $stripeCustomer->id; // ID del cliente Stripe
-                $payment->payer_email = auth()->user()->email; // Email dell'utente
-                $payment->amount = $tot; // Importo dell'ordine
-                $payment->currency = env('CASHIER_CURRENCY'); // Valuta dell'ordine
-                $payment->payment_status = 'succeeded'; // Stato del pagamento (puoi estrarlo da $stripeCharge)
-                $payment->event_id = $request->event_id; // ID dell'evento correlato all'ordine
-                $payment->user_id = auth()->user()->id; // ID dell'utente che ha effettuato il pagamento
-                $payment->stand_type_id = $request->stand_type_id; // ID del tipo di stand
-                $payment->n_modules = null; // Puoi impostare questo valore in base alle tue esigenze
-                $payment->type_of_payment = $request->type_of_payment;
-                $payment->save();
-
-                $updt_exhibitor = Exhibitor::findOrFail(auth()->user()->exhibitor->id);
-                $updt_exhibitor->pm_type = $stripeCharge->charges->data[0]->payment_method_details->type;
-                $updt_exhibitor->pm_last_four = $stripeCharge->charges->data[0]->payment_method_details->card->last4;
-                $updt_exhibitor->save();
-
-                foreach($rows as $row) {
-                    Order::create([
-                        'exhibitor_id' => auth()->user()->exhibitor->id,
-                        'furnishing_id' => $row->id,
-                        'qty' => $row->qty,
-                        'is_supplied' => $row->is_supplied,
-                        'price' => $row->price,
-                        'event_id' => $request->event_id,
-                        'payment_id' => $payment->id,
-                        'created_at' => DB::raw('NOW()'),
-                        'updated_at' => DB::raw('NOW()')
-                    ]);
-                }
-
-                // send email to user for subscription
-                $email_from = env('MAIL_FROM_ADDRESS');
-                $email_to = auth()->user()->email;
-                $subject = trans('emails.confirm_order', [], auth()->user()->exhibitor->locale);
-                $setting = Setting::take(1)->firstOrFail();
-
-                $body = formatDataForEmail([
-                    'event_title' => $event->title,
-                    'event_start' => Carbon::parse($event->start)->format('d/m/Y'),
-                    'event_end' => Carbon::parse($event->end)->format('d/m/Y'),
-                    'responsible' => auth()->user()->exhibitor->detail->responsible,
-                ], auth()->user()->exhibitor->locale == 'it' ? $setting->email_confirm_order_it : $setting->email_confirm_order_en);
-
-                $data = [
-                    'body' => $body
+                $stripeMetadata = [
+                    'type_of_payment' => 'furnishing_payment',
                 ];
 
-                Mail::send('emails.form-data', ['data' => $data], function ($m) use ($email_from, $email_to, $subject) {
-                    $m->from($email_from, env('MAIL_FROM_NAME'));
-                    $m->to($email_to)->subject(env('APP_NAME').' '.$subject);
-                });
+                //Stripe charge
+                $stripeCharge = $this->chargeStripe($authUser, $amount, $request->paymentMethodId, $exhibitor, $stripeMetadata);
 
-                return redirect('admin/dashboard/')
-                    ->with('success', trans('generals.payment_subscription_ok', ['event' => $event->title]));
-            } else {
+                //Get customer from Stripe
+                $stripeCustomer = $exhibitor->asStripeCustomer();
+
+                //insert payment into DB
+                $payment = $this->insertPayment($stripeCharge, $stripeCustomer, $authUser, $request, $currency, $tot, $request->stand_type_id, null);
+
+                //Update exhibitor payment data
+                $this->updateExhibitor($exhibitor, $stripeCharge);
+
                 foreach($rows as $row) {
-                    Order::create([
-                        'exhibitor_id' => auth()->user()->exhibitor->id,
-                        'furnishing_id' => $row->id,
-                        'qty' => $row->qty,
-                        'is_supplied' => $row->is_supplied,
-                        'price' => $row->price,
-                        'event_id' => $request->event_id,
-                        'payment_id' => null,
-                        'created_at' => DB::raw('NOW()'),
-                        'updated_at' => DB::raw('NOW()')
-                    ]);
+                    $this->insertOrder($exhibitor, $row, $request, $payment, $payment->id);
                 }
 
-                $orders = DB::table('orders')
-                    ->leftJoin('furnishings', 'orders.furnishing_id', '=', 'furnishings.id')
-                    ->leftJoin('furnishings_translations', function($join) {
-                        $join->on('furnishings.id', '=', 'furnishings_translations.furnishing_id')
-                            ->orOn('furnishings.variant_id', '=', 'furnishings_translations.furnishing_id');
-                    })
-                    ->where([
-                        ['orders.exhibitor_id', '=', auth()->user()->exhibitor->id],
-                        ['furnishings_translations.locale', '=', auth()->user()->exhibitor->locale]
-                    ])
-                    ->select('orders.*', 'furnishings_translations.description', 'furnishings.color')
-                    ->get();
+                //send email to exhibitor for furnishing order
+                $orders = $this->getOrders($exhibitor->id, $payment->id, $exhibitor->locale);
 
-                $setting = Setting::take(1)->firstOrFail();
+                $labels = [
+                    'description' => trans('entities.furnishing', [], $exhibitor->locale),
+                    'color' => trans('tables.color', [],$exhibitor->locale),
+                    'qty' => trans('tables.qty', [], $exhibitor->locale),
+                    'price' => trans('tables.price', [], $exhibitor->locale),
+                ];
 
                 $orders_txt = '<dl>';
                 foreach($orders as $order) {
-                    $orders_txt .= '<dd>'.trans('entities.furnishing', [], auth()->user()->exhibitor->locale).': '.$order->description.'</dd>';
-                    $orders_txt .= '<dd>'.trans('tables.color', [], auth()->user()->exhibitor->locale).': '.$order->color.'</dd>';
-                    $orders_txt .= '<dd>'.trans('tables.qty', [], auth()->user()->exhibitor->locale).': '.$order->qty.'</dd>';
-                    $orders_txt .= '<dd>'.trans('tables.price', [], auth()->user()->exhibitor->locale).': '.$order->price.'</dd>';
+                    foreach ($labels as $field => $label) {
+                        $orders_txt .= '<dd>' . $label . ': ' . $order->$field . '</dd>';
+                    }
                 }
                 $orders_txt .= '</dl>';
-                
+
+                $setting = Setting::take(1)->first();
+
+                $emailTemplate = $exhibitor->locale == 'it' ? $setting->email_confirm_order_it : $setting->email_confirm_order_en;
+
                 $body = formatDataForEmail([
                     'orders' => $orders_txt,
                     'tot' => $tot,
-                ], auth()->user()->exhibitor->locale == 'it' ? $setting->email_confirm_order_it : $setting->email_confirm_order_en);
+                ], $emailTemplate);
 
                 $data = [
                     'body' => $body
                 ];
 
-                $subject = trans('emails.confirm_order', [], auth()->user()->exhibitor->locale);
+                $subject = trans('emails.confirm_order', [], $exhibitor->locale);
                 $email_from = env('MAIL_FROM_ADDRESS');
-                $email_to = auth()->user()->email;
-                Mail::send('emails.form-data', ['data' => $data], function ($m) use ($email_from, $email_to, $subject) {
-                    $m->from($email_from, env('MAIL_FROM_NAME'));
-                    $m->to($email_to)->subject(env('APP_NAME').' '.$subject);
-                });
+                $email_to = $authUser->email;
 
-                $orders = DB::table('orders')
-                    ->leftJoin('furnishings', 'orders.furnishing_id', '=', 'furnishings.id')
-                    ->leftJoin('furnishings_translations', function($join) {
-                        $join->on('furnishings.id', '=', 'furnishings_translations.furnishing_id')
-                            ->orOn('furnishings.variant_id', '=', 'furnishings_translations.furnishing_id');
-                    })
-                    ->where([
-                        ['orders.exhibitor_id', '=', auth()->user()->exhibitor->id],
-                        ['furnishings_translations.locale', '=', 'it']
-                    ])
-                    ->select('orders.*', 'furnishings_translations.description', 'furnishings.color')
-                    ->get();
+                $this->sendEmail($subject, $data, $email_from, $email_to);
+
+                //Send email to admin for furnishing order
+                $ordersAdmin = $this->getOrders($exhibitor->id, $payment->id, 'it');
+                $emailTemplateAdmin = $setting->email_to_admin_notification_confirm_order;
 
                 $orders_txt = '<dl>';
-                foreach($orders as $order) {
-                    $orders_txt .= '<dd>Arredo: '.$order->description.'</dd>';
-                    $orders_txt .= '<dd>Colore: '.$order->color.'</dd>';
-                    $orders_txt .= '<dd>Quantità: '.$order->qty.'</dd>';
-                    $orders_txt .= '<dd>Prezzo: '.$order->price.'</dd>';
+                foreach($ordersAdmin as $order) {
+                    foreach ($labels as $field => $label) {
+                        $orders_txt .= '<dd>' . $label . ': ' . $order->$field . '</dd>';
+                    }
                 }
                 $orders_txt .= '</dl>';
 
                 $body = formatDataForEmail([
                     'orders' => $orders_txt,
                     'tot' => $tot,
-                    'company' => auth()->user()->exhibitor->detail->company
-                ], $setting->email_to_admin_notification_confirm_order);
+                    'company' => $exhibitor->detail->company,
+                ], $emailTemplateAdmin);
 
                 $data = [
                     'body' => $body
@@ -350,11 +224,78 @@ class StripePaymentController extends Controller
                 $admin_mail_subject = trans('emails.confirm_order', [], 'it');
                 $admin_mail_email_from = env('MAIL_FROM_ADDRESS');
                 $admin_mail_email_to = env('MAIL_ARREDI');
-                Mail::send('emails.form-data', ['data' => $data], function ($m) use ($admin_mail_email_from, $admin_mail_email_to, $admin_mail_subject) {
-                    $m->from($admin_mail_email_from, env('MAIL_FROM_NAME'));
-                    $m->to($admin_mail_email_to)->subject(env('APP_NAME').' '.$admin_mail_subject);
-                });
-                
+                $this->sendEmail($admin_mail_subject, $data, $admin_mail_email_from, $admin_mail_email_to);
+
+                return redirect('admin/dashboard/')
+                    ->with('success', trans('generals.payment_subscription_ok', ['event' => $event->title]));
+            } else {
+
+                //insert order without payment
+                foreach($rows as $row) {
+                    $this->insertOrder($exhibitor, $row, $request, null, null);
+                }
+
+                //send email to exhibitor for furnishings order
+                $setting = Setting::take(1)->firstOrFail();
+                $orders = $this->getOrders($exhibitor->id, null, $exhibitor->locale);
+                $emailTemplate = $exhibitor->locale == 'it' ? $setting->email_confirm_order_it : $setting->email_confirm_order_en;
+
+                $labels = [
+                    'description' => trans('entities.furnishing', [], $exhibitor->locale),
+                    'color' => trans('tables.color', [],$exhibitor->locale),
+                    'qty' => trans('tables.qty', [], $exhibitor->locale),
+                    'price' => trans('tables.price', [], $exhibitor->locale),
+                ];
+
+                $orders_txt = '<dl>';
+                foreach($orders as $order) {
+                    foreach ($labels as $field => $label) {
+                        $orders_txt .= '<dd>' . $label . ': ' . $order->$field . '</dd>';
+                    }
+                }
+                $orders_txt .= '</dl>';
+
+                $body = formatDataForEmail([
+                    'orders' => $orders_txt,
+                    'tot' => $tot,
+                ], $emailTemplate);
+
+                $data = [
+                    'body' => $body
+                ];
+
+                $subject = trans('emails.confirm_order', [], $exhibitor->locale);
+                $email_from = env('MAIL_FROM_ADDRESS');
+                $email_to = $authUser->email;
+                $this->sendEmail($subject, $data, $email_from, $email_to);
+
+                //send email to admin for furnishings order without payment
+                $ordersAdmin = $this->getOrders($exhibitor->id, null, 'it');
+                $emailTemplateAdmin = $setting->email_to_admin_notification_confirm_order;
+
+                $orders_txt = '<dl>';
+                foreach($ordersAdmin as $order) {
+                    foreach ($labels as $field => $label) {
+                        $orders_txt .= '<dd>' . $label . ': ' . $order->$field . '</dd>';
+                    }
+                }
+                $orders_txt .= '</dl>';
+
+                $body = formatDataForEmail([
+                    'orders' => $orders_txt,
+                    'tot' => $tot,
+                    'company' => $exhibitor->detail->company,
+                ], $emailTemplateAdmin);
+
+                $data = [
+                    'body' => $body
+                ];
+
+                $admin_mail_subject = trans('emails.confirm_order', [], 'it');
+                $admin_mail_email_from = env('MAIL_FROM_ADDRESS');
+                $admin_mail_email_to = env('MAIL_ARREDI');
+                $this->sendEmail($admin_mail_subject, $data, $admin_mail_email_from, $admin_mail_email_to);
+
                 return redirect('admin/dashboard/')
                     ->with('success', trans('generals.payment_furnishing_ok', ['event' => $event->title]));
             }
@@ -365,4 +306,126 @@ class StripePaymentController extends Controller
                 ->withErrors($th->getMessage());
         }
     }
+
+    public function validationData($validation_data, $request) {
+        return Validator::make($request->all(), $validation_data);
+    }
+
+    public function updateStripeCustomerData($exhibitor) {
+
+        $exhibitor_detail = $exhibitor->detail;
+
+        $data_for_billing = [
+            'address' => [
+                'city' => $exhibitor_detail->city,
+                'postal_code' => $exhibitor_detail->cap,
+                'state' => $exhibitor_detail->province,
+                'line1' => $exhibitor_detail->address.', '.$exhibitor_detail->civic_number,
+            ],
+            'email' => $exhibitor_detail->email_responsible,
+            'name' => $exhibitor_detail->responsible,
+            'phone' => $exhibitor_detail->phone_responsible,
+            'preferred_locales' => [ $exhibitor->locale ],
+        ];
+
+        $vat_number = $exhibitor_detail->vat_number;
+
+        if($exhibitor_detail->diff_billing) {
+            $data_for_billing = [
+                'address' => [
+                    'city' => $exhibitor_detail->receiver_city,
+                    'postal_code' => $exhibitor_detail->receiver_cap,
+                    'state' => $exhibitor_detail->receiver_province,
+                    'line1' => $exhibitor_detail->receiver_address.', '.$exhibitor_detail->receiver_civic_number,
+                ],
+                'email' => $exhibitor->user->email,
+                'name' => $exhibitor_detail->responsible,
+                'phone' => $exhibitor_detail->phone_responsible,
+                'preferred_locales' => [ $exhibitor->locale ],
+            ];
+            $vat_number = $exhibitor_detail->receiver_vat_number;
+        }
+
+        $exhibitor->updateStripeCustomer($data_for_billing);
+
+        if($exhibitor->taxIds()->count() <= 0) {
+            $exhibitor->createTaxId('eu_vat', $vat_number);
+        }
+    }
+
+    public function updateExhibitor($exhibitor, $stripeCharge) {
+        $updt_exhibitor = Exhibitor::findOrFail($exhibitor->id);
+        $updt_exhibitor->pm_type = $stripeCharge->charges->data[0]->payment_method_details->type;
+        $updt_exhibitor->pm_last_four = $stripeCharge->charges->data[0]->payment_method_details->card->last4;
+        $updt_exhibitor->save();
+    }
+
+    public function sendEmail($subject, $data, $emailFrom, $emailTo) {
+        Mail::send('emails.form-data', ['data' => $data], function ($m) use ($emailFrom, $emailTo, $subject) {
+            $m->from($emailFrom, env('MAIL_FROM_NAME'));
+            $m->to($emailTo)->subject(env('APP_NAME').' '.$subject);
+        });
+    }
+
+    public function chargeStripe($authUser, $amount, $paymentMethodId, $customer, $metadata) {
+        return $authUser->exhibitor->charge(
+            $amount, $paymentMethodId, [
+                'customer' => $customer->id,
+                'receipt_email' => $authUser->email,
+                'metadata' => $metadata,
+            ]
+        );
+    }
+
+    public function insertPayment($stripeCharge, $stripeCustomer, $authUser, $request, $currency, $totalPrice, $standID, $n_modules = null) {
+        $payment = new Payment();
+        $payment->payment_id = $stripeCharge->id;
+        $payment->payer_id = $stripeCustomer->id;
+        $payment->payer_email = $authUser->email;
+        $payment->amount = $totalPrice;
+        $payment->currency = $currency;
+        $payment->payment_status = 'succeeded';
+        $payment->event_id = $request->event_id;
+        $payment->user_id = $authUser->id;
+        $payment->stand_type_id = $standID;
+        $payment->n_modules = $n_modules;
+        $payment->type_of_payment = $request->type_of_payment;
+        $payment->save();
+        return $payment;
+    }
+
+    public function insertOrder($exhibitor, $row, $request, $payment = null, $paymentId = null)
+    {
+        return Order::create([
+            'exhibitor_id' => $exhibitor->id,
+            'furnishing_id' => $row->id,
+            'qty' => $row->qty,
+            'is_supplied' => $row->is_supplied,
+            'price' => $row->price,
+            'event_id' => $request->event_id,
+            'payment_id' => $paymentId,
+            'created_at' => now(),
+            'updated_at' => now()
+        ]);
+    }
+
+    public function getOrders($exhibitorId, $paymentId, $exhibitorLocale)
+    {
+        $query = DB::table('orders')
+            ->leftJoin('furnishings', 'orders.furnishing_id', '=', 'furnishings.id')
+            ->leftJoin('furnishings_translations', function ($join) {
+                $join->on('furnishings.id', '=', 'furnishings_translations.furnishing_id')
+                    ->orOn('furnishings.variant_id', '=', 'furnishings_translations.furnishing_id');
+            })
+            ->where('orders.exhibitor_id', '=', $exhibitorId)
+            ->where('furnishings_translations.locale', '=', $exhibitorLocale)
+            ->select('orders.*', 'furnishings_translations.description', 'furnishings.color');
+
+        if ($paymentId !== null) {
+            $query->where('orders.payment_id', '=', $paymentId);
+        }
+
+        return $query->get();
+    }
+
 }
