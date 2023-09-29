@@ -11,8 +11,8 @@ use Fieroo\Payment\Models\Order;
 use Fieroo\Exhibitors\Models\Exhibitor;
 use Fieroo\Bootstrapper\Models\Setting;
 use Fieroo\Stands\Models\StandsTypeTranslation;
-use DB;
 use Validator;
+use DB;
 use \Carbon\Carbon;
 
 class StripePaymentController extends Controller
@@ -87,18 +87,14 @@ class StripePaymentController extends Controller
             $email_to = $authUser->email;
             $setting = Setting::take(1)->first();
             $emailTemplate = $exhibitor->locale == 'it' ? $setting->email_event_subscription_it : $setting->email_event_subscription_en;
-            $body = formatDataForEmail([
+            $emailFormatData = [
                 'event_title' => $event->title,
                 'event_start' => Carbon::parse($event->start)->format('d/m/Y'),
                 'event_end' => Carbon::parse($event->end)->format('d/m/Y'),
                 'responsible' => $exhibitor->detail->responsible,
-            ], $emailTemplate);
-
-            $data = [
-                'body' => $body
             ];
 
-           $this->sendEmail($subject, $data, $email_from, $email_to);
+           $this->sendEmail($subject, $emailFormatData, $emailTemplate, $email_from, $email_to);
 
             return redirect('admin/dashboard/')
                 ->with('success', trans('generals.payment_subscription_ok', ['event' => $event->title]));
@@ -159,152 +155,32 @@ class StripePaymentController extends Controller
                 $this->updateExhibitor($exhibitor, $stripeCharge);
 
                 foreach($rows as $row) {
-                    $this->insertOrder($exhibitor, $row, $request, $payment, $payment->id);
+                    $this->insertOrder($exhibitor, $row, $request, $payment->id);
                 }
 
-                //send email to exhibitor for furnishing order
-                $orders = $this->getOrders($exhibitor->id, $payment->id, $exhibitor->locale);
-
-                $labels = [
-                    'description' => trans('entities.furnishing', [], $exhibitor->locale),
-                    'color' => trans('tables.color', [],$exhibitor->locale),
-                    'qty' => trans('tables.qty', [], $exhibitor->locale),
-                    'price' => trans('tables.price', [], $exhibitor->locale),
-                ];
-
-                $orders_txt = '<dl>';
-                foreach($orders as $order) {
-                    foreach ($labels as $field => $label) {
-                        $orders_txt .= '<dd>' . $label . ': ' . $order->$field . '</dd>';
-                    }
-                }
-                $orders_txt .= '</dl>';
-
-                $setting = Setting::take(1)->first();
-
-                $emailTemplate = $exhibitor->locale == 'it' ? $setting->email_confirm_order_it : $setting->email_confirm_order_en;
-
-                $body = formatDataForEmail([
-                    'orders' => $orders_txt,
-                    'tot' => $tot,
-                ], $emailTemplate);
-
-                $data = [
-                    'body' => $body
-                ];
-
-                $subject = trans('emails.confirm_order', [], $exhibitor->locale);
-                $email_from = env('MAIL_FROM_ADDRESS');
-                $email_to = $authUser->email;
-
-                $this->sendEmail($subject, $data, $email_from, $email_to);
-
-                //Send email to admin for furnishing order
-                $ordersAdmin = $this->getOrders($exhibitor->id, $payment->id, 'it');
-                $emailTemplateAdmin = $setting->email_to_admin_notification_confirm_order;
-
-                $orders_txt = '<dl>';
-                foreach($ordersAdmin as $order) {
-                    foreach ($labels as $field => $label) {
-                        $orders_txt .= '<dd>' . $label . ': ' . $order->$field . '</dd>';
-                    }
-                }
-                $orders_txt .= '</dl>';
-
-                $body = formatDataForEmail([
-                    'orders' => $orders_txt,
-                    'tot' => $tot,
-                    'company' => $exhibitor->detail->company,
-                ], $emailTemplateAdmin);
-
-                $data = [
-                    'body' => $body
-                ];
-
-                $admin_mail_subject = trans('emails.confirm_order', [], 'it');
-                $admin_mail_email_from = env('MAIL_FROM_ADDRESS');
-                $admin_mail_email_to = env('MAIL_ARREDI');
-                $this->sendEmail($admin_mail_subject, $data, $admin_mail_email_from, $admin_mail_email_to);
-
-                return redirect('admin/dashboard/')
-                    ->with('success', trans('generals.payment_subscription_ok', ['event' => $event->title]));
             } else {
-
                 //insert order without payment
                 foreach($rows as $row) {
-                    $this->insertOrder($exhibitor, $row, $request, null, null);
+                    $this->insertOrder($exhibitor, $row, $request);
                 }
-
-                //send email to exhibitor for furnishings order
-                $setting = Setting::take(1)->firstOrFail();
-                $orders = $this->getOrders($exhibitor->id, null, $exhibitor->locale);
-                $emailTemplate = $exhibitor->locale == 'it' ? $setting->email_confirm_order_it : $setting->email_confirm_order_en;
-
-                $labels = [
-                    'description' => trans('entities.furnishing', [], $exhibitor->locale),
-                    'color' => trans('tables.color', [],$exhibitor->locale),
-                    'qty' => trans('tables.qty', [], $exhibitor->locale),
-                    'price' => trans('tables.price', [], $exhibitor->locale),
-                ];
-
-                $orders_txt = '<dl>';
-                foreach($orders as $order) {
-                    foreach ($labels as $field => $label) {
-                        $orders_txt .= '<dd>' . $label . ': ' . $order->$field . '</dd>';
-                    }
-                }
-                $orders_txt .= '</dl>';
-
-                $body = formatDataForEmail([
-                    'orders' => $orders_txt,
-                    'tot' => $tot,
-                ], $emailTemplate);
-
-                $data = [
-                    'body' => $body
-                ];
-
-                $subject = trans('emails.confirm_order', [], $exhibitor->locale);
-                $email_from = env('MAIL_FROM_ADDRESS');
-                $email_to = $authUser->email;
-                $this->sendEmail($subject, $data, $email_from, $email_to);
-
-                //send email to admin for furnishings order without payment
-                $ordersAdmin = $this->getOrders($exhibitor->id, null, 'it');
-                $emailTemplateAdmin = $setting->email_to_admin_notification_confirm_order;
-
-                $orders_txt = '<dl>';
-                foreach($ordersAdmin as $order) {
-                    foreach ($labels as $field => $label) {
-                        $orders_txt .= '<dd>' . $label . ': ' . $order->$field . '</dd>';
-                    }
-                }
-                $orders_txt .= '</dl>';
-
-                $body = formatDataForEmail([
-                    'orders' => $orders_txt,
-                    'tot' => $tot,
-                    'company' => $exhibitor->detail->company,
-                ], $emailTemplateAdmin);
-
-                $data = [
-                    'body' => $body
-                ];
-
-                $admin_mail_subject = trans('emails.confirm_order', [], 'it');
-                $admin_mail_email_from = env('MAIL_FROM_ADDRESS');
-                $admin_mail_email_to = env('MAIL_ARREDI');
-                $this->sendEmail($admin_mail_subject, $data, $admin_mail_email_from, $admin_mail_email_to);
-
-                return redirect('admin/dashboard/')
-                    ->with('success', trans('generals.payment_furnishing_ok', ['event' => $event->title]));
             }
+
+            // Invio email sia quando $tot > 0 che quando $tot == 0
+            $this->sendFurnishingEmails($exhibitor, $authUser, $exhibitor->locale, true, $tot);
+
+            return redirect('admin/dashboard/')
+                ->with('success', trans('generals.payment_furnishing_ok', ['event' => $event->title]));
 
         } catch(\Throwable $th){
             return redirect()
                 ->back()
                 ->withErrors($th->getMessage());
         }
+    }
+
+    public function validationData($validation_data, $request)
+    {
+        return Validator::make($request->all(), $validation_data);
     }
 
     public function updateStripeCustomerData($exhibitor)
@@ -387,7 +263,7 @@ class StripePaymentController extends Controller
         return $payment;
     }
 
-    public function insertOrder($exhibitor, $row, $request, $payment = null, $paymentId = null)
+    public function insertOrder($exhibitor, $row, $request, $paymentId = null)
     {
         return Order::create([
             'exhibitor_id' => $exhibitor->id,
@@ -421,4 +297,62 @@ class StripePaymentController extends Controller
         return $query->get();
     }
 
+    public function generateOrderEmailSummary($orders, $labels)
+    {
+        $orders_txt = '<dl>';
+        foreach ($orders as $order) {
+            foreach ($labels as $field => $label) {
+                $orders_txt .= '<dd>' . $label . ': ' . $order->$field . '</dd>';
+            }
+        }
+        $orders_txt .= '</dl>';
+        return $orders_txt;
+    }
+
+    public function sendFurnishingEmails($exhibitor, $authUser, $locale, $isToAdmin, $total)
+    {
+        // Invia email all'utente
+        $subject = trans('emails.confirm_order', [], $locale);
+        $email_from = env('MAIL_FROM_ADDRESS');
+        $email_to = $authUser->email;
+
+        $setting = Setting::take(1)->first();
+        $emailTemplate = $locale == 'it' ? $setting->email_confirm_order_it : $setting->email_confirm_order_en;
+
+        $labels = [
+            'description' => trans('entities.furnishing', [], $locale),
+            'color' => trans('tables.color', [], $locale),
+            'qty' => trans('tables.qty', [], $locale),
+            'price' => trans('tables.price', [], $locale),
+        ];
+
+        $orders = $this->getOrders($exhibitor->id, null, $locale);
+        $orders_txt = $this->generateOrderEmailSummary($orders, $labels);
+
+        $emailFormatData = [
+            'orders' => $orders_txt,
+            'tot' => $total,
+        ];
+
+        $this->sendEmail($subject, $emailFormatData, $emailTemplate, $email_from, $email_to);
+
+        // Invia email all'amministratore se necessario
+        if ($isToAdmin) {
+
+            $admin_mail_subject = trans('emails.confirm_order', [], 'it');
+            $admin_mail_email_to = env('MAIL_ARREDI');
+
+            $emailTemplateAdmin = $setting->email_to_admin_notification_confirm_order;
+            $ordersAdmin = $this->getOrders($exhibitor->id, null, 'it');
+            $orders_txt_admin = $this->generateOrderEmailSummary($ordersAdmin, $labels);
+
+            $emailFormatDataAdmin = [
+                'orders' => $orders_txt_admin,
+                'tot' => $total,
+                'company' => $exhibitor->detail->company,
+            ];
+
+            $this->sendEmail($admin_mail_subject, $emailFormatDataAdmin, $emailTemplateAdmin, $email_from, $admin_mail_email_to);
+        }
+    }
 }
