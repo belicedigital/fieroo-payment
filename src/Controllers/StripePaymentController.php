@@ -3,16 +3,16 @@
 namespace Fieroo\Payment\Controllers;
 
 use Illuminate\Http\Request;
-use App\Http\Controllers\Controller;
+// use App\Http\Controllers\Controller;
+use Fieroo\Bootstrapper\Controllers\BootstrapperController as Controller;
 use Fieroo\Payment\Models\Payment;
 use Fieroo\Events\Models\Event;
 use Fieroo\Payment\Models\Order;
 use Fieroo\Exhibitors\Models\Exhibitor;
 use Fieroo\Bootstrapper\Models\Setting;
 use Fieroo\Stands\Models\StandsTypeTranslation;
-use Validator;
 use DB;
-use Mail;
+use Validator;
 use \Carbon\Carbon;
 
 class StripePaymentController extends Controller
@@ -44,7 +44,7 @@ class StripePaymentController extends Controller
                 'modules_selected' => ['required', 'numeric', 'min:1']
             ];
 
-            $validator = $this->validationData($validation_data, $request);
+            $validator = Validator::make($request->all(), $validation_data);
 
             if ($validator->fails()) {
                 return redirect()
@@ -132,7 +132,7 @@ class StripePaymentController extends Controller
                 $tot += $row->price;
             }
 
-            $validator = $this->validationData($validation_data, $request);
+            $validator = Validator::make($request->all(), $validation_data);
 
             if ($validator->fails()) {
                 return redirect()
@@ -307,11 +307,8 @@ class StripePaymentController extends Controller
         }
     }
 
-    public function validationData($validation_data, $request) {
-        return Validator::make($request->all(), $validation_data);
-    }
-
-    public function updateStripeCustomerData($exhibitor) {
+    public function updateStripeCustomerData($exhibitor)
+    {
 
         $exhibitor_detail = $exhibitor->detail;
 
@@ -353,21 +350,16 @@ class StripePaymentController extends Controller
         }
     }
 
-    public function updateExhibitor($exhibitor, $stripeCharge) {
+    public function updateExhibitor($exhibitor, $stripeCharge)
+    {
         $updt_exhibitor = Exhibitor::findOrFail($exhibitor->id);
         $updt_exhibitor->pm_type = $stripeCharge->charges->data[0]->payment_method_details->type;
         $updt_exhibitor->pm_last_four = $stripeCharge->charges->data[0]->payment_method_details->card->last4;
         $updt_exhibitor->save();
     }
 
-    public function sendEmail($subject, $data, $emailFrom, $emailTo) {
-        Mail::send('emails.form-data', ['data' => $data], function ($m) use ($emailFrom, $emailTo, $subject) {
-            $m->from($emailFrom, env('MAIL_FROM_NAME'));
-            $m->to($emailTo)->subject(env('APP_NAME').' '.$subject);
-        });
-    }
-
-    public function chargeStripe($authUser, $amount, $paymentMethodId, $customer, $metadata) {
+    public function chargeStripe($authUser, $amount, $paymentMethodId, $customer, $metadata)
+    {
         return $authUser->exhibitor->charge(
             $amount, $paymentMethodId, [
                 'customer' => $customer->id,
@@ -377,7 +369,8 @@ class StripePaymentController extends Controller
         );
     }
 
-    public function insertPayment($stripeCharge, $stripeCustomer, $authUser, $request, $currency, $totalPrice, $standID, $n_modules = null) {
+    public function insertPayment($stripeCharge, $stripeCustomer, $authUser, $request, $currency, $totalPrice, $standID, $n_modules = null)
+    {
         $payment = new Payment();
         $payment->payment_id = $stripeCharge->id;
         $payment->payer_id = $stripeCustomer->id;
