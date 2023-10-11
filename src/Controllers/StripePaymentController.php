@@ -3,7 +3,6 @@
 namespace Fieroo\Payment\Controllers;
 
 use Illuminate\Http\Request;
-// use App\Http\Controllers\Controller;
 use Fieroo\Bootstrapper\Controllers\BootstrapperController as Controller;
 use Fieroo\Payment\Models\Payment;
 use Fieroo\Events\Models\Event;
@@ -14,6 +13,8 @@ use Fieroo\Stands\Models\StandsTypeTranslation;
 use Validator;
 use DB;
 use \Carbon\Carbon;
+use Dompdf\Dompdf;
+use Dompdf\Options;
 
 class StripePaymentController extends Controller
 {
@@ -94,7 +95,9 @@ class StripePaymentController extends Controller
                 'responsible' => $exhibitor->detail->responsible,
             ];
 
-           $this->sendEmail($subject, $emailFormatData, $emailTemplate, $email_from, $email_to);
+            $pdfName = 'subscription-confirmation.pdf';
+            $pdfContent = $this->generateOrderPDF($request);
+            $this->sendEmail($subject, $emailFormatData, $emailTemplate, $email_from, $email_to, $pdfContent, $pdfName);
 
             return redirect('admin/dashboard/')
                 ->with('success', trans('generals.payment_subscription_ok', ['event' => $event->title]));
@@ -165,8 +168,7 @@ class StripePaymentController extends Controller
                 }
             }
 
-            // Invio email sia quando $tot > 0 che quando $tot == 0
-            $this->sendFurnishingEmails($exhibitor, $authUser, $exhibitor->locale, true, $tot);
+            $this->sendFurnishingEmails($exhibitor, $authUser, $exhibitor->locale, true, $tot, $request);
 
             return redirect('admin/dashboard/')
                 ->with('success', trans('generals.payment_furnishing_ok', ['event' => $event->title]));
@@ -178,9 +180,42 @@ class StripePaymentController extends Controller
         }
     }
 
-    public function validationData($validation_data, $request)
-    {
-        return Validator::make($request->all(), $validation_data);
+    public function getExhibitorData($exhibitor) {
+        $exhibitor_detail = $exhibitor->detail;
+
+        $data_for_billing = [
+            'address' => [
+                'city' => $exhibitor_detail->city,
+                'postal_code' => $exhibitor_detail->cap,
+                'state' => $exhibitor_detail->province,
+                'line1' => $exhibitor_detail->address.', '.$exhibitor_detail->civic_number,
+            ],
+            'email' => $exhibitor_detail->email_responsible,
+            'name' => $exhibitor_detail->responsible,
+            'phone' => $exhibitor_detail->phone_responsible,
+            'preferred_locales' => [ $exhibitor->locale ],
+            'company' => $exhibitor_detail->company,
+            'vat_number' => $exhibitor_detail->vat_number
+        ];
+
+        if($exhibitor_detail->diff_billing) {
+            $data_for_billing = [
+                'address' => [
+                    'city' => $exhibitor_detail->receiver_city,
+                    'postal_code' => $exhibitor_detail->receiver_cap,
+                    'state' => $exhibitor_detail->receiver_province,
+                    'line1' => $exhibitor_detail->receiver_address.', '.$exhibitor_detail->receiver_civic_number,
+                ],
+                'email' => $exhibitor->user->email,
+                'name' => $exhibitor_detail->responsible,
+                'phone' => $exhibitor_detail->phone_responsible,
+                'preferred_locales' => [ $exhibitor->locale ],
+                'company' => $exhibitor_detail->company,
+                'vat_number' => $exhibitor_detail->receiver_vat_number
+            ];
+        }
+
+        return $data_for_billing;
     }
 
     public function updateStripeCustomerData($exhibitor)
@@ -309,9 +344,9 @@ class StripePaymentController extends Controller
         return $orders_txt;
     }
 
-    public function sendFurnishingEmails($exhibitor, $authUser, $locale, $isToAdmin, $total)
+    public function sendFurnishingEmails($exhibitor, $authUser, $locale, $isToAdmin, $total, $request)
     {
-        // Invia email all'utente
+        // Send email to exhibitor
         $subject = trans('emails.confirm_order', [], $locale);
         $email_from = env('MAIL_FROM_ADDRESS');
         $email_to = $authUser->email;
@@ -334,9 +369,12 @@ class StripePaymentController extends Controller
             'tot' => $total,
         ];
 
-        $this->sendEmail($subject, $emailFormatData, $emailTemplate, $email_from, $email_to);
+        $pdfName = 'order-confirmation.pdf';
+        $pdfContent = $this->generateOrderPDF($request, 'order');
 
-        // Invia email all'amministratore se necessario
+        $this->sendEmail($subject, $emailFormatData, $emailTemplate, $email_from, $email_to, $pdfContent, $pdfName);
+
+        // Send email to admin if is needed
         if ($isToAdmin) {
 
             $admin_mail_subject = trans('emails.confirm_order', [], 'it');
@@ -353,6 +391,99 @@ class StripePaymentController extends Controller
             ];
 
             $this->sendEmail($admin_mail_subject, $emailFormatDataAdmin, $emailTemplateAdmin, $email_from, $admin_mail_email_to);
+        }
+    }
+
+    public function generateOrderPDF(Request $request, string $typeOfPDF = 'subscription')
+    {
+        try {
+            //Event and setting data
+            $event = Event::findOrFail($request->event_id)->first();
+            $setting = Setting::take(1)->first();
+
+            // Create a DOMPDF object
+            $pdfOptions = new Options();
+            $pdfOptions->set('isHtml5ParserEnabled', true);
+            $pdfOptions->set('isPhpEnabled', true);
+            $pdfOptions->set('isRemoteEnabled', true);
+            $pdfOptions->set('defaultMediaType', 'all');
+            $pdfOptions->setDefaultFont('dejavu sans');
+            $pdf = new Dompdf($pdfOptions);
+
+            // Exhibitor data
+            $exhibitor = auth()->user()->exhibitor;
+            $data_for_billing = $this->getExhibitorData($exhibitor);
+
+            // Create a common set of data
+            $commonData = [
+                'event' => $event,
+                'iva' => $setting->iva,
+                'exhibitor' => $data_for_billing,
+                'paymentId' => $request->paymentMethodId
+            ];
+
+            if ($typeOfPDF == 'subscription') {
+
+                //Stand data for subscription event
+                $stand = StandsTypeTranslation::where([
+                    ['stand_type_id', '=', $request->stand_selected],
+                    ['locale', '=', $exhibitor->locale]
+                ])->firstOrFail();
+                $totalPrice = $stand->price * $request->modules_selected;
+
+                // Calculate tax and total
+                $totalTax = $totalPrice/100 * $setting->iva;
+                $totalTaxIncl = $totalPrice + $totalTax;
+
+                // Add specific data for the 'subscription' type
+                $pdfView = view('payment::pdf.subscription-conf',  array_merge($commonData,  [
+                    'totalPrice' => $totalPrice,
+                    'totalTaxIncl' => $totalTaxIncl,
+                    'totalTax' => $totalTax,
+                    'stand' => $stand,
+                    'qty' => $request->modules_selected,
+                ]));
+            } else {
+
+                // Add specific data for the order case
+                $rows = json_decode($request->data);
+
+                //Get total of items
+                $tot = 0;
+                foreach($rows as $row) {
+                    $tot += $row->price;
+                }
+
+                // Calculate tax and total
+                $totTax = $tot/100 * $setting->iva;
+                $totTaxIncl = $tot + $totTax;
+
+                $pdfView = view('payment::pdf.order-conf', array_merge($commonData, [
+                    'orders' => $this->getOrders($exhibitor->id, null, $exhibitor->locale),
+                    'ordersTot' => $tot,
+                    'ordersTotTaxIncl' => $totTaxIncl,
+                    'totTax' => $totTax
+                ]));
+            }
+
+            // Convert to Html
+            $html = $pdfView->render();
+
+            // Load HTML in Dompdf
+            $pdf->loadHtml($html);
+
+            // Set rendering option
+            $pdf->setPaper('A4');
+
+            // Render PDF
+            $pdf->render();
+
+            return $pdf->output();
+
+        } catch (\Throwable $th) {
+            return redirect()
+                ->back()
+                ->withErrors($th->getMessage());
         }
     }
 }
