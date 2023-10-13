@@ -23,7 +23,7 @@ class StripePaymentController extends Controller
         try {
 
             $exhibitor = auth()->user()->exhibitor;
-            $event = Event::findOrFail($request->event_id)->first();
+            $event = Event::findOrFail($request->event_id);
 
             $stand = StandsTypeTranslation::where([
                 ['stand_type_id', '=', $request->stand_selected],
@@ -99,6 +99,9 @@ class StripePaymentController extends Controller
             $pdfContent = $this->generateOrderPDF($request);
             $this->sendEmail($subject, $emailFormatData, $emailTemplate, $email_from, $email_to, $pdfContent, $pdfName);
 
+            $email_admin = env('MAIL_ADMIN');
+            $this->sendEmail($subject, $emailFormatData, $emailTemplate, $email_from, $email_admin, $pdfContent, $pdfName);
+
             return redirect('admin/dashboard/')
                 ->with('success', trans('generals.payment_subscription_ok', ['event' => $event->title]));
 
@@ -122,7 +125,7 @@ class StripePaymentController extends Controller
             $authUser = auth()->user();
             $exhibitor = auth()->user()->exhibitor;
             $currency = env('CASHIER_CURRENCY');
-            $event = Event::findOrFail($request->event_id)->first();
+            $event = Event::findOrFail($request->event_id);
             $rows = json_decode($request->data);
 
             //Get total of items
@@ -313,7 +316,7 @@ class StripePaymentController extends Controller
         ]);
     }
 
-    public function getOrders($exhibitorId, $paymentId, $exhibitorLocale)
+    public function getOrders($exhibitorId, $eventId, $paymentId, $exhibitorLocale)
     {
         $query = DB::table('orders')
             ->leftJoin('furnishings', 'orders.furnishing_id', '=', 'furnishings.id')
@@ -322,6 +325,7 @@ class StripePaymentController extends Controller
                     ->orOn('furnishings.variant_id', '=', 'furnishings_translations.furnishing_id');
             })
             ->where('orders.exhibitor_id', '=', $exhibitorId)
+            ->where('orders.event_id','=', $eventId)
             ->where('furnishings_translations.locale', '=', $exhibitorLocale)
             ->select('orders.*', 'furnishings_translations.description', 'furnishings.color');
 
@@ -361,7 +365,7 @@ class StripePaymentController extends Controller
             'price' => trans('tables.price', [], $locale),
         ];
 
-        $orders = $this->getOrders($exhibitor->id, null, $locale);
+        $orders = $this->getOrders($exhibitor->id, $request->event_id, null, $locale);
         $orders_txt = $this->generateOrderEmailSummary($orders, $labels);
 
         $emailFormatData = [
@@ -378,10 +382,10 @@ class StripePaymentController extends Controller
         if ($isToAdmin) {
 
             $admin_mail_subject = trans('emails.confirm_order', [], 'it');
-            $admin_mail_email_to = env('MAIL_ARREDI');
+            $admin_mail_email_to = env('MAIL_ADMIN');
 
             $emailTemplateAdmin = $setting->email_to_admin_notification_confirm_order;
-            $ordersAdmin = $this->getOrders($exhibitor->id, null, 'it');
+            $ordersAdmin = $this->getOrders($exhibitor->id, $request->event_id, null, 'it');
             $orders_txt_admin = $this->generateOrderEmailSummary($ordersAdmin, $labels);
 
             $emailFormatDataAdmin = [
@@ -390,7 +394,7 @@ class StripePaymentController extends Controller
                 'company' => $exhibitor->detail->company,
             ];
 
-            $this->sendEmail($admin_mail_subject, $emailFormatDataAdmin, $emailTemplateAdmin, $email_from, $admin_mail_email_to);
+            $this->sendEmail($admin_mail_subject, $emailFormatDataAdmin, $emailTemplateAdmin, $email_from, $admin_mail_email_to, $pdfContent, $pdfName);
         }
     }
 
@@ -398,7 +402,7 @@ class StripePaymentController extends Controller
     {
         try {
             //Event and setting data
-            $event = Event::findOrFail($request->event_id)->first();
+            $event = Event::findOrFail($request->event_id);
             $setting = Setting::take(1)->first();
 
             // Create a DOMPDF object
@@ -459,7 +463,7 @@ class StripePaymentController extends Controller
                 $totTaxIncl = $tot + $totTax;
 
                 $pdfView = view('payment::pdf.order-conf', array_merge($commonData, [
-                    'orders' => $this->getOrders($exhibitor->id, null, $exhibitor->locale),
+                    'orders' => $this->getOrders($exhibitor->id, $request->event_id, null, $exhibitor->locale),
                     'ordersTot' => $tot,
                     'ordersTotTaxIncl' => $totTaxIncl,
                     'totTax' => $totTax

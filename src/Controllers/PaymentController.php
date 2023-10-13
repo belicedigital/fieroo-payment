@@ -269,11 +269,7 @@ class PaymentController extends Controller
 
                 $admin_mail_subject = trans('emails.confirm_order', [], 'it');
                 $admin_mail_email_from = env('MAIL_FROM_ADDRESS');
-                $admin_mail_email_to = env('MAIL_ARREDI');
-                // Mail::send('emails.confirm-order', ['data' => $data], function ($m) use ($admin_mail_email_from, $admin_mail_email_to, $admin_mail_subject) {
-                //     $m->from($admin_mail_email_from, env('MAIL_FROM_NAME'));
-                //     $m->to($admin_mail_email_to)->subject(env('APP_NAME').' '.$admin_mail_subject);
-                // });
+                $admin_mail_email_to = env('MAIL_ADMIN');
                 Mail::send('emails.form-data', ['data' => $data], function ($m) use ($admin_mail_email_from, $admin_mail_email_to, $admin_mail_subject) {
                     $m->from($admin_mail_email_from, env('MAIL_FROM_NAME'));
                     $m->to($admin_mail_email_to)->subject(env('APP_NAME').' '.$admin_mail_subject);
@@ -525,11 +521,7 @@ class PaymentController extends Controller
 
                     $admin_mail_subject = trans('emails.confirm_order', [], 'it');
                     $admin_mail_email_from = env('MAIL_FROM_ADDRESS');
-                    $admin_mail_email_to = env('MAIL_ARREDI');
-                    // Mail::send('emails.confirm-order', ['data' => $data], function ($m) use ($admin_mail_email_from, $admin_mail_email_to, $admin_mail_subject) {
-                    //     $m->from($admin_mail_email_from, env('MAIL_FROM_NAME'));
-                    //     $m->to($admin_mail_email_to)->subject(env('APP_NAME').' '.$admin_mail_subject);
-                    // });
+                    $admin_mail_email_to = env('MAIL_ADMIN');
                     Mail::send('emails.form-data', ['data' => $data], function ($m) use ($admin_mail_email_from, $admin_mail_email_to, $admin_mail_subject) {
                         $m->from($admin_mail_email_from, env('MAIL_FROM_NAME'));
                         $m->to($admin_mail_email_to)->subject(env('APP_NAME').' '.$admin_mail_subject);
