@@ -32,6 +32,7 @@ class StripePaymentController extends Controller
 
             $price = $stand->price * 100; // * 100 because stripe calc 1 => 0,01 cent
             $amount = $price * $request->modules_selected;
+            $amount_iva = $amount * 1.22;
             $currency = env('CASHIER_CURRENCY');
 
             // if is not a customer is created
@@ -39,6 +40,7 @@ class StripePaymentController extends Controller
             $authUser = auth()->user();
 
             $totalPrice = $stand->price * $request->modules_selected;
+            $totalPrice_iva = $totalPrice * 1.22;
 
             $validation_data = [
                 'stand_selected' => ['required', 'exists:stands_types,id'],
@@ -63,11 +65,12 @@ class StripePaymentController extends Controller
                 'qty' => $request->modules_selected,
                 'single_price' => $stand->price,
                 'total_price' => $totalPrice,
+                'totalPrice_iva' => $totalPrice_iva,
             ];
 
             $stripeCharge = $this->chargeStripe(
                 $request->user(),
-                $amount,
+                $amount_iva,
                 $request->paymentMethodId,
                 $customer,
                 $stripeMetadata
@@ -142,14 +145,17 @@ class StripePaymentController extends Controller
                     ->withErrors(trans('generals.pay_validation_wrong'));
             }
 
+            $tot = $tot * 1.22;
+
             if($tot > 0) {
                 $amount = $tot * 100; // * 100 per stripe
+                $amount_iva = $amount * 1.22;
                 $stripeMetadata = [
                     'type_of_payment' => 'furnishing_payment',
                 ];
 
                 //Stripe charge
-                $stripeCharge = $this->chargeStripe($authUser, $amount, $request->paymentMethodId, $exhibitor, $stripeMetadata);
+                $stripeCharge = $this->chargeStripe($authUser, $amount_iva, $request->paymentMethodId, $exhibitor, $stripeMetadata);
 
                 //Get customer from Stripe
                 $stripeCustomer = $exhibitor->asStripeCustomer();
