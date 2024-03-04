@@ -17,7 +17,7 @@ use Dompdf\Dompdf;
 use Dompdf\Options;
 use Illuminate\Support\Facades\Log;
 use Laravel\Cashier\Exceptions\IncompletePayment;
-use Stripe\PaymentMethod;
+use Laravel\Cashier\PaymentMethod;
 
 class StripePaymentController extends Controller
 {
@@ -88,7 +88,8 @@ class StripePaymentController extends Controller
             // dd($exception);
             $stripeCharge = new \stdClass();
             $stripeCharge->id = $exception->payment->id;
-            // $paymentMethod = PaymentMethod::retrieve($exception->payment->payment_method);
+            $paymentMethod = PaymentMethod::retrieve($exception->payment->payment_method);
+            dd($paymentMethod);
             dd($exhibitor->paymentMethods());
             $stripeCharge->pm_last_four = $paymentMethod->card->last4;
             $stripeCharge->pm_type = $paymentMethod->type;
