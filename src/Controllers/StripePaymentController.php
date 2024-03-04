@@ -71,6 +71,8 @@ class StripePaymentController extends Controller
                 'totalPrice_iva' => $totalPrice_iva,
             ];
 
+            dd('ciao');
+
             $stripeCharge = $this->chargeStripe(
                 $request->user(),
                 $amount_iva,
