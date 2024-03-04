@@ -16,6 +16,7 @@ use \Carbon\Carbon;
 use Dompdf\Dompdf;
 use Dompdf\Options;
 use Stripe\PaymentIntent;
+use Illuminate\Support\Facades\Log;
 
 class StripePaymentController extends Controller
 {
@@ -82,11 +83,13 @@ class StripePaymentController extends Controller
 
             // Setup Payment Intent
             $paymentIntent = PaymentIntent::retrieve($stripeCharge->payment_intent);
+            Log::info('paymentIntent retrieve');
+            Log::info($paymentIntent->status);
             // $paymentIntent = PaymentIntent::retrieve($request->paymentMethodId);
 
             // se viene richiesto il 3DSecure allora fare redirect di conferma
             if ($paymentIntent->status === 'requires_action') {
-
+                Log::info('azione richiesta 3dsecure');
                 return redirect()->route('3dsecure.auth', [
                     'payment_intent_client_secret' => $paymentIntent->client_secret,
                     'success_url' => route('subscription.success'),
