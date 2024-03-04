@@ -17,6 +17,7 @@ use Dompdf\Dompdf;
 use Dompdf\Options;
 use Stripe\PaymentIntent;
 use Illuminate\Support\Facades\Log;
+use Laravel\Cashier\Exceptions\IncompletePayment;
 
 class StripePaymentController extends Controller
 {
@@ -81,23 +82,25 @@ class StripePaymentController extends Controller
             // Ottenere i dati del cliente da Stripe
             $stripeCustomer = $request->user()->exhibitor->asStripeCustomer();
 
-            dd($stripeCharge->payment_intent);
+            // dd($stripeCharge->payment_intent);
+
             // Setup Payment Intent
-            $paymentIntent = PaymentIntent::retrieve($stripeCharge);
-            dd($paymentIntent);
-            Log::info('paymentIntent retrieve');
-            Log::info($paymentIntent->status);
+            // $paymentIntent = PaymentIntent::retrieve($request->);
+
+            // dd($paymentIntent);
+            // Log::info('paymentIntent retrieve');
+            // Log::info($paymentIntent->status);
             // $paymentIntent = PaymentIntent::retrieve($request->paymentMethodId);
 
             // se viene richiesto il 3DSecure allora fare redirect di conferma
-            if ($paymentIntent->status === 'requires_action') {
-                Log::info('azione richiesta 3dsecure');
-                return redirect()->route('3dsecure.auth', [
-                    'payment_intent_client_secret' => $paymentIntent->client_secret,
-                    'success_url' => route('subscription.success'),
-                    'cancel_url' => route('subscription.cancel'),
-                ]);
-            }
+            // if ($paymentIntent->status === 'requires_action') {
+            //     Log::info('azione richiesta 3dsecure');
+            //     return redirect()->route('3dsecure.auth', [
+            //         'payment_intent_client_secret' => $paymentIntent->client_secret,
+            //         'success_url' => route('subscription.success'),
+            //         'cancel_url' => route('subscription.cancel'),
+            //     ]);
+            // }
 
             //Insert payment in DB
             $this->insertPayment($stripeCharge, $stripeCustomer, $authUser, $request, $currency, $totalPrice, $request->stand_selected, $request->modules_selected);
@@ -128,6 +131,8 @@ class StripePaymentController extends Controller
             return redirect('admin/dashboard/')
                 ->with('success', trans('generals.payment_subscription_ok', ['event' => $event->title]));
 
+        } catch(IncompletePayment $exception) {
+            return redirect()->route('cashier.payment', [$exception->payment->id, 'redirect' => route('payment')]);
         } catch(\Throwable $th){
             return redirect()
                 ->back()
