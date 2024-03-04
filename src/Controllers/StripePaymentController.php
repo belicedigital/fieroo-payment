@@ -82,6 +82,7 @@ class StripePaymentController extends Controller
             $stripeCustomer = $request->user()->exhibitor->asStripeCustomer();
 
             // Setup Payment Intent
+            dd($stripeCharge);
             $paymentIntent = PaymentIntent::retrieve($stripeCharge->payment_intent);
             Log::info('paymentIntent retrieve');
             Log::info($paymentIntent->status);
