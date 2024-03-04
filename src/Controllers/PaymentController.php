@@ -55,22 +55,29 @@ class PaymentController extends Controller
                     ->withErrors(trans('generals.pay_validation_wrong'));
             }
 
-            $stand = DB::table('stands_types_translations')->where([
-                ['stand_type_id', '=', $request->stand_selected],
-                ['locale', '=', App::getLocale()]
-            ])->first();
+            $exhibitor = auth()->user()->exhibitor;
 
-            if(!is_object($stand)) {
-                return redirect()
-                    ->back()
-                    ->withErrors(trans('generals.pay_validation_wrong'));
-            }
+            // $stand = DB::table('stands_types_translations')->where([
+            //     ['stand_type_id', '=', $request->stand_selected],
+            //     ['locale', '=', App::getLocale()]
+            // ])->first();
+            $stand = StandsTypeTranslation::where([
+                ['stand_type_id', '=', $request->stand_selected],
+                ['locale', '=', $exhibitor->locale]
+            ])->firstOrFail();
+
+            // if(!is_object($stand)) {
+            //     return redirect()
+            //         ->back()
+            //         ->withErrors(trans('generals.pay_validation_wrong'));
+            // }
 
             $price = $stand->price;
             $amount = $stand->price * $request->modules_selected;
+            $amount_iva = $amount * 1.22;
 
             $response = $this->gateway->purchase([
-                'amount' => $amount,
+                'amount' => $amount_iva,
                 'currency' => env('PAYPAL_CURRENCY'),
                 'returnUrl' => url('/admin/paypal/success'),
                 'cancelUrl' => url('/admin/paypal/error'),
@@ -116,29 +123,40 @@ class PaymentController extends Controller
                     ->withErrors(trans('generals.pay_validation_wrong'));
             }
 
-            // $exhibitor = DB::table('exhibitors')->where('user_id','=',auth()->user()->id)->first();
-            $exhibitor = Exhibitor::where('user_id','=',auth()->user()->id)->first();
-            if(!is_object($exhibitor)) {
-                return redirect()
-                    ->back()
-                    ->withErrors(trans('generals.pay_validation_wrong'));
-            }
+            $authUser = auth()->user();
+            $exhibitor = $authUser->exhibitor;
 
-            $stand = DB::table('stands_types_translations')->where([
+            $event = Event::findOrFail($request->event_id);
+
+            // $exhibitor = DB::table('exhibitors')->where('user_id','=',auth()->user()->id)->first();
+            // $exhibitor = Exhibitor::where('user_id','=',auth()->user()->id)->first();
+            // if(!is_object($exhibitor)) {
+            //     return redirect()
+            //         ->back()
+            //         ->withErrors(trans('generals.pay_validation_wrong'));
+            // }
+
+            // $stand = DB::table('stands_types_translations')->where([
+            //     ['stand_type_id', '=', $request->stand_type_id],
+            //     ['locale', '=', App::getLocale()]
+            // ])->first();
+            // if(!is_object($stand)) {
+            //     return redirect()
+            //         ->back()
+            //         ->withErrors(trans('generals.pay_validation_wrong'));
+            // }
+            $stand = StandsTypeTranslation::where([
                 ['stand_type_id', '=', $request->stand_type_id],
-                ['locale', '=', App::getLocale()]
-            ])->first();
-            if(!is_object($stand)) {
-                return redirect()
-                    ->back()
-                    ->withErrors(trans('generals.pay_validation_wrong'));
-            }
+                ['locale', '=', $exhibitor->locale]
+            ])->firstOrFail();
 
             $rows = json_decode($request->data);
             $tot = 0;
             foreach($rows as $row) {
                 $tot += $row->price;
             }
+
+            $tot = $tot * 1.22;
 
             if($tot > 0) {
                 $response = $this->gateway->purchase([
@@ -166,33 +184,36 @@ class PaymentController extends Controller
                 }
             } else {
                 foreach($rows as $row) {
-                    Order::create([
-                        'exhibitor_id' => $exhibitor->id,
-                        'furnishing_id' => $row->id,
-                        'qty' => $row->qty,
-                        'is_supplied' => $row->is_supplied,
-                        'price' => $row->price,
-                        'event_id' => $request->event_id,
-                        'payment_id' => null,
-                        'created_at' => DB::raw('NOW()'),
-                        'updated_at' => DB::raw('NOW()')
-                    ]);
+                    $this->insertOrder($exhibitor->id, $row, $request->event_id);
+                    // Order::create([
+                    //     'exhibitor_id' => $exhibitor->id,
+                    //     'furnishing_id' => $row->id,
+                    //     'qty' => $row->qty,
+                    //     'is_supplied' => $row->is_supplied,
+                    //     'price' => $row->price,
+                    //     'event_id' => $request->event_id,
+                    //     'payment_id' => null,
+                    //     'created_at' => DB::raw('NOW()'),
+                    //     'updated_at' => DB::raw('NOW()')
+                    // ]);
                 }
 
-                $event = Event::findOrFail($request->event_id);
+                $this->sendFurnishingEmails($exhibitor, $authUser, $exhibitor->locale, true, $tot, $request);
 
-                $orders = DB::table('orders')
-                    ->leftJoin('furnishings', 'orders.furnishing_id', '=', 'furnishings.id')
-                    ->leftJoin('furnishings_translations', function($join) {
-                        $join->on('furnishings.id', '=', 'furnishings_translations.furnishing_id')
-                            ->orOn('furnishings.variant_id', '=', 'furnishings_translations.furnishing_id');
-                    })
-                    ->where([
-                        ['orders.exhibitor_id', '=', $exhibitor->id],
-                        ['furnishings_translations.locale', '=', $exhibitor->locale]
-                    ])
-                    ->select('orders.*', 'furnishings_translations.description', 'furnishings.color')
-                    ->get();
+                // $event = Event::findOrFail($request->event_id);
+
+                // $orders = DB::table('orders')
+                //     ->leftJoin('furnishings', 'orders.furnishing_id', '=', 'furnishings.id')
+                //     ->leftJoin('furnishings_translations', function($join) {
+                //         $join->on('furnishings.id', '=', 'furnishings_translations.furnishing_id')
+                //             ->orOn('furnishings.variant_id', '=', 'furnishings_translations.furnishing_id');
+                //     })
+                //     ->where([
+                //         ['orders.exhibitor_id', '=', $exhibitor->id],
+                //         ['furnishings_translations.locale', '=', $exhibitor->locale]
+                //     ])
+                //     ->select('orders.*', 'furnishings_translations.description', 'furnishings.color')
+                //     ->get();
 
                 // $data = [
                 //     'locale' => $exhibitor->locale,
@@ -200,50 +221,50 @@ class PaymentController extends Controller
                 //     'tot' => $tot
                 // ];
 
-                $setting = Setting::take(1)->first();
+                // $setting = Setting::take(1)->first();
 
-                $orders_txt = '<dl>';
-                foreach($orders as $order) {
-                    $orders_txt .= '<dd>'.trans('entities.furnishing', [], $exhibitor->locale).': '.$order->description.'</dd>';
-                    $orders_txt .= '<dd>'.trans('tables.color', [], $exhibitor->locale).': '.$order->color.'</dd>';
-                    $orders_txt .= '<dd>'.trans('tables.qty', [], $exhibitor->locale).': '.$order->qty.'</dd>';
-                    $orders_txt .= '<dd>'.trans('tables.price', [], $exhibitor->locale).': '.$order->price.'</dd>';
-                }
-                $orders_txt .= '</dl>';
+                // $orders_txt = '<dl>';
+                // foreach($orders as $order) {
+                //     $orders_txt .= '<dd>'.trans('entities.furnishing', [], $exhibitor->locale).': '.$order->description.'</dd>';
+                //     $orders_txt .= '<dd>'.trans('tables.color', [], $exhibitor->locale).': '.$order->color.'</dd>';
+                //     $orders_txt .= '<dd>'.trans('tables.qty', [], $exhibitor->locale).': '.$order->qty.'</dd>';
+                //     $orders_txt .= '<dd>'.trans('tables.price', [], $exhibitor->locale).': '.$order->price.'</dd>';
+                // }
+                // $orders_txt .= '</dl>';
                 
-                $body = formatDataForEmail([
-                    'orders' => $orders_txt,
-                    'tot' => $tot,
-                ], $exhibitor->locale == 'it' ? $setting->email_confirm_order_it : $setting->email_confirm_order_en);
+                // $body = formatDataForEmail([
+                //     'orders' => $orders_txt,
+                //     'tot' => $tot,
+                // ], $exhibitor->locale == 'it' ? $setting->email_confirm_order_it : $setting->email_confirm_order_en);
 
-                $data = [
-                    'body' => $body
-                ];
+                // $data = [
+                //     'body' => $body
+                // ];
 
-                $subject = trans('emails.confirm_order', [], $exhibitor->locale);
-                $email_from = env('MAIL_FROM_ADDRESS');
-                $email_to = auth()->user()->email;
+                // $subject = trans('emails.confirm_order', [], $exhibitor->locale);
+                // $email_from = env('MAIL_FROM_ADDRESS');
+                // $email_to = auth()->user()->email;
                 // Mail::send('emails.confirm-order', ['data' => $data], function ($m) use ($email_from, $email_to, $subject) {
                 //     $m->from($email_from, env('MAIL_FROM_NAME'));
                 //     $m->to($email_to)->subject(env('APP_NAME').' '.$subject);
                 // });
-                Mail::send('emails.form-data', ['data' => $data], function ($m) use ($email_from, $email_to, $subject) {
-                    $m->from($email_from, env('MAIL_FROM_NAME'));
-                    $m->to($email_to)->subject(env('APP_NAME').' '.$subject);
-                });
+                // Mail::send('emails.form-data', ['data' => $data], function ($m) use ($email_from, $email_to, $subject) {
+                //     $m->from($email_from, env('MAIL_FROM_NAME'));
+                //     $m->to($email_to)->subject(env('APP_NAME').' '.$subject);
+                // });
 
-                $orders = DB::table('orders')
-                    ->leftJoin('furnishings', 'orders.furnishing_id', '=', 'furnishings.id')
-                    ->leftJoin('furnishings_translations', function($join) {
-                        $join->on('furnishings.id', '=', 'furnishings_translations.furnishing_id')
-                            ->orOn('furnishings.variant_id', '=', 'furnishings_translations.furnishing_id');
-                    })
-                    ->where([
-                        ['orders.exhibitor_id', '=', $exhibitor->id],
-                        ['furnishings_translations.locale', '=', 'it']
-                    ])
-                    ->select('orders.*', 'furnishings_translations.description', 'furnishings.color')
-                    ->get();
+                // $orders = DB::table('orders')
+                //     ->leftJoin('furnishings', 'orders.furnishing_id', '=', 'furnishings.id')
+                //     ->leftJoin('furnishings_translations', function($join) {
+                //         $join->on('furnishings.id', '=', 'furnishings_translations.furnishing_id')
+                //             ->orOn('furnishings.variant_id', '=', 'furnishings_translations.furnishing_id');
+                //     })
+                //     ->where([
+                //         ['orders.exhibitor_id', '=', $exhibitor->id],
+                //         ['furnishings_translations.locale', '=', 'it']
+                //     ])
+                //     ->select('orders.*', 'furnishings_translations.description', 'furnishings.color')
+                //     ->get();
 
                 // $data = [
                 //     'locale' => 'it',
@@ -251,32 +272,32 @@ class PaymentController extends Controller
                 //     'tot' => $tot
                 // ];
 
-                $orders_txt = '<dl>';
-                foreach($orders as $order) {
-                    $orders_txt .= '<dd>Arredo: '.$order->description.'</dd>';
-                    $orders_txt .= '<dd>Colore: '.$order->color.'</dd>';
-                    $orders_txt .= '<dd>Quantità: '.$order->qty.'</dd>';
-                    $orders_txt .= '<dd>Prezzo: '.$order->price.'</dd>';
-                }
-                $orders_txt .= '</dl>';
+                // $orders_txt = '<dl>';
+                // foreach($orders as $order) {
+                //     $orders_txt .= '<dd>Arredo: '.$order->description.'</dd>';
+                //     $orders_txt .= '<dd>Colore: '.$order->color.'</dd>';
+                //     $orders_txt .= '<dd>Quantità: '.$order->qty.'</dd>';
+                //     $orders_txt .= '<dd>Prezzo: '.$order->price.'</dd>';
+                // }
+                // $orders_txt .= '</dl>';
 
-                $body = formatDataForEmail([
-                    'orders' => $orders_txt,
-                    'tot' => $tot,
-                    'company' => $exhibitor->detail->company
-                ], $setting->email_to_admin_notification_confirm_order);
+                // $body = formatDataForEmail([
+                //     'orders' => $orders_txt,
+                //     'tot' => $tot,
+                //     'company' => $exhibitor->detail->company
+                // ], $setting->email_to_admin_notification_confirm_order);
 
-                $data = [
-                    'body' => $body
-                ];
+                // $data = [
+                //     'body' => $body
+                // ];
 
-                $admin_mail_subject = trans('emails.confirm_order', [], 'it');
-                $admin_mail_email_from = env('MAIL_FROM_ADDRESS');
-                $admin_mail_email_to = env('MAIL_ADMIN');
-                Mail::send('emails.form-data', ['data' => $data], function ($m) use ($admin_mail_email_from, $admin_mail_email_to, $admin_mail_subject) {
-                    $m->from($admin_mail_email_from, env('MAIL_FROM_NAME'));
-                    $m->to($admin_mail_email_to)->subject(env('APP_NAME').' '.$admin_mail_subject);
-                });
+                // $admin_mail_subject = trans('emails.confirm_order', [], 'it');
+                // $admin_mail_email_from = env('MAIL_FROM_ADDRESS');
+                // $admin_mail_email_to = env('MAIL_ADMIN');
+                // Mail::send('emails.form-data', ['data' => $data], function ($m) use ($admin_mail_email_from, $admin_mail_email_to, $admin_mail_subject) {
+                //     $m->from($admin_mail_email_from, env('MAIL_FROM_NAME'));
+                //     $m->to($admin_mail_email_to)->subject(env('APP_NAME').' '.$admin_mail_subject);
+                // });
                 
                 return redirect('admin/dashboard/')
                     ->with('success', trans('generals.payment_furnishing_ok', ['event' => $event->title]));
@@ -309,60 +330,67 @@ class PaymentController extends Controller
 
                 if($response->isSuccessful()) {
                     $arr = $response->getData();
-                    $payment = new Payment();
-                    $payment->payment_id = $arr['id'];
-                    $payment->payer_id = $arr['payer']['payer_info']['payer_id'];
-                    $payment->payer_email = $arr['payer']['payer_info']['email'];
-                    $payment->amount = $arr['transactions'][0]['amount']['total'];
-                    $payment->currency = env('PAYPAL_CURRENCY');
-                    $payment->payment_status = $arr['state'];
-                    $payment->event_id = $purchase_data['event_id'];
-                    $payment->user_id = $purchase_data['user_id'];
-                    $payment->stand_type_id = $purchase_data['stand_type_id'];
-                    $payment->n_modules = $purchase_data['n_modules'];
-                    $payment->type_of_payment = $purchase_data['type_of_payment'];
-                    $payment->save();
+                    $this->insertPayment($arr, $purchase_data);
+                    // $payment = new Payment();
+                    // $payment->payment_id = $arr['id'];
+                    // $payment->payer_id = $arr['payer']['payer_info']['payer_id'];
+                    // $payment->payer_email = $arr['payer']['payer_info']['email'];
+                    // $payment->amount = $arr['transactions'][0]['amount']['total'];
+                    // $payment->currency = env('PAYPAL_CURRENCY');
+                    // $payment->payment_status = $arr['state'];
+                    // $payment->event_id = $purchase_data['event_id'];
+                    // $payment->user_id = $purchase_data['user_id'];
+                    // $payment->stand_type_id = $purchase_data['stand_type_id'];
+                    // $payment->n_modules = $purchase_data['n_modules'];
+                    // $payment->type_of_payment = $purchase_data['type_of_payment'];
+                    // $payment->save();
 
                     // get the data
                     $event = Event::findOrFail($purchase_data['event_id']);
                     $user = User::findOrFail($purchase_data['user_id']);
                     $exhibitor = Exhibitor::where('user_id', '=', $user->id)->firstOrFail();
-                    // $exhibitor_data = DB::table('exhibitors_data')
-                    //     ->where('exhibitor_id', '=', $exhibitor->id)
-                    //     ->first();
 
-                    // send email to user for subscription
+                    $subject = trans('emails.event_subscription', [], $exhibitor->locale);
                     $email_from = env('MAIL_FROM_ADDRESS');
                     $email_to = $user->email;
-                    $subject = trans('emails.event_subscription', [], App::getLocale());
-                    // $data = [
-                    //     'locale' => App::getLocale(),
-                    //     'event_title' => $event->title,
-                    //     'event_start' => $event->start,
-                    //     'event_end' => $event->end,
-                    //     'responsible' => $exhibitor_data->responsible
-                    // ];
                     $setting = Setting::take(1)->first();
-
-                    $body = formatDataForEmail([
+                    $emailTemplate = $exhibitor->locale == 'it' ? $setting->email_event_subscription_it : $setting->email_event_subscription_en;
+                    $emailFormatData = [
                         'event_title' => $event->title,
                         'event_start' => Carbon::parse($event->start)->format('d/m/Y'),
                         'event_end' => Carbon::parse($event->end)->format('d/m/Y'),
                         'responsible' => $exhibitor->detail->responsible,
-                    ], $exhibitor->locale == 'it' ? $setting->email_event_subscription_it : $setting->email_event_subscription_en);
-
-                    $data = [
-                        'body' => $body
                     ];
 
-                    // Mail::send('emails.event-subscription', ['data' => $data], function ($m) use ($email_from, $email_to, $subject) {
+                    $pdfName = 'subscription-confirmation.pdf';
+                    $pdfContent = $this->generateOrderPDF($request);
+                    $this->sendEmail($subject, $emailFormatData, $emailTemplate, $email_from, $email_to, $pdfContent, $pdfName);
+
+                    $email_admin = env('MAIL_ADMIN');
+                    $this->sendEmail($subject, $emailFormatData, $emailTemplate, $email_from, $email_admin, $pdfContent, $pdfName);
+                    
+
+                    // send email to user for subscription
+                    // $email_from = env('MAIL_FROM_ADDRESS');
+                    // $email_to = $user->email;
+                    // $subject = trans('emails.event_subscription', [], App::getLocale());
+                    // $setting = Setting::take(1)->first();
+
+                    // $body = formatDataForEmail([
+                    //     'event_title' => $event->title,
+                    //     'event_start' => Carbon::parse($event->start)->format('d/m/Y'),
+                    //     'event_end' => Carbon::parse($event->end)->format('d/m/Y'),
+                    //     'responsible' => $exhibitor->detail->responsible,
+                    // ], $exhibitor->locale == 'it' ? $setting->email_event_subscription_it : $setting->email_event_subscription_en);
+
+                    // $data = [
+                    //     'body' => $body
+                    // ];
+
+                    // Mail::send('emails.form-data', ['data' => $data], function ($m) use ($email_from, $email_to, $subject) {
                     //     $m->from($email_from, env('MAIL_FROM_NAME'));
                     //     $m->to($email_to)->subject(env('APP_NAME').' '.$subject);
                     // });
-                    Mail::send('emails.form-data', ['data' => $data], function ($m) use ($email_from, $email_to, $subject) {
-                        $m->from($email_from, env('MAIL_FROM_NAME'));
-                        $m->to($email_to)->subject(env('APP_NAME').' '.$subject);
-                    });
 
                     return redirect('admin/dashboard/')
                         ->with('success', trans('generals.payment_subscription_ok', ['event' => $event->title]));
@@ -400,135 +428,128 @@ class PaymentController extends Controller
 
                 if($response->isSuccessful()) {
                     $arr = $response->getData();
-                    $payment = new Payment();
-                    $payment->payment_id = $arr['id'];
-                    $payment->payer_id = $arr['payer']['payer_info']['payer_id'];
-                    $payment->payer_email = $arr['payer']['payer_info']['email'];
-                    $payment->amount = $arr['transactions'][0]['amount']['total'];
-                    $payment->currency = env('PAYPAL_CURRENCY');
-                    $payment->payment_status = $arr['state'];
-                    $payment->event_id = $purchase_data['event_id'];
-                    $payment->user_id = $purchase_data['user_id'];
-                    $payment->stand_type_id = $purchase_data['stand_type_id'];
-                    $payment->n_modules = null;
-                    $payment->type_of_payment = $purchase_data['type_of_payment'];
-                    $payment->save();
+                    $payment = $this->insertPayment($arr, $purchase_data);
+
+                    // $payment = new Payment();
+                    // $payment->payment_id = $arr['id'];
+                    // $payment->payer_id = $arr['payer']['payer_info']['payer_id'];
+                    // $payment->payer_email = $arr['payer']['payer_info']['email'];
+                    // $payment->amount = $arr['transactions'][0]['amount']['total'];
+                    // $payment->currency = env('PAYPAL_CURRENCY');
+                    // $payment->payment_status = $arr['state'];
+                    // $payment->event_id = $purchase_data['event_id'];
+                    // $payment->user_id = $purchase_data['user_id'];
+                    // $payment->stand_type_id = $purchase_data['stand_type_id'];
+                    // $payment->n_modules = null;
+                    // $payment->type_of_payment = $purchase_data['type_of_payment'];
+                    // $payment->save();
 
                     foreach($purchase_data['rows'] as $row) {
-                        Order::create([
-                            'exhibitor_id' => $purchase_data['exhibitor_id'],
-                            'furnishing_id' => $row->id,
-                            'qty' => $row->qty,
-                            'is_supplied' => $row->is_supplied,
-                            'price' => $row->price,
-                            'event_id' => $purchase_data['event_id'],
-                            'payment_id' => $payment->id,
-                            'created_at' => DB::raw('NOW()'),
-                            'updated_at' => DB::raw('NOW()')
-                        ]);
+                        $this->insertOrder($purchase_data['exhibitor_id'], $row, $purchase_data['event_id'], $payment->id);
+                        // Order::create([
+                        //     'exhibitor_id' => $purchase_data['exhibitor_id'],
+                        //     'furnishing_id' => $row->id,
+                        //     'qty' => $row->qty,
+                        //     'is_supplied' => $row->is_supplied,
+                        //     'price' => $row->price,
+                        //     'event_id' => $purchase_data['event_id'],
+                        //     'payment_id' => $payment->id,
+                        //     'created_at' => DB::raw('NOW()'),
+                        //     'updated_at' => DB::raw('NOW()')
+                        // ]);
                     }
 
                     $event = Event::findOrFail($purchase_data['event_id']);
-                    $exhibitor = Exhibitor::where('user_id', '=', auth()->user()->id)->firstOrFail();
+                    // $exhibitor = Exhibitor::where('user_id', '=', auth()->user()->id)->firstOrFail();
+                    $authUser = auth()->user();
+                    $exhibitor = $authUser->exhibitor;
 
-                    $orders = DB::table('orders')
-                        ->leftJoin('furnishings', 'orders.furnishing_id', '=', 'furnishings.id')
-                        ->leftJoin('furnishings_translations', function($join) {
-                            $join->on('furnishings.id', '=', 'furnishings_translations.furnishing_id')
-                                ->orOn('furnishings.variant_id', '=', 'furnishings_translations.furnishing_id');
-                        })
-                        ->where([
-                            ['orders.payment_id', '=', $payment->id],
-                            ['orders.exhibitor_id', '=', $exhibitor->id],
-                            ['furnishings_translations.locale', '=', $exhibitor->locale]
-                        ])
-                        ->select('orders.*', 'furnishings_translations.description', 'furnishings.color')
-                        ->get();
+                    $this->sendFurnishingEmails($exhibitor, $authUser, $exhibitor->locale, true, $tot, $request);
+
+                    // $orders = DB::table('orders')
+                    //     ->leftJoin('furnishings', 'orders.furnishing_id', '=', 'furnishings.id')
+                    //     ->leftJoin('furnishings_translations', function($join) {
+                    //         $join->on('furnishings.id', '=', 'furnishings_translations.furnishing_id')
+                    //             ->orOn('furnishings.variant_id', '=', 'furnishings_translations.furnishing_id');
+                    //     })
+                    //     ->where([
+                    //         ['orders.payment_id', '=', $payment->id],
+                    //         ['orders.exhibitor_id', '=', $exhibitor->id],
+                    //         ['furnishings_translations.locale', '=', $exhibitor->locale]
+                    //     ])
+                    //     ->select('orders.*', 'furnishings_translations.description', 'furnishings.color')
+                    //     ->get();
+
+                    // $orders_txt = '<dl>';
+                    // foreach($orders as $order) {
+                    //     $orders_txt .= '<dd>'.trans('entities.furnishing', [], $exhibitor->locale).': '.$order->description.'</dd>';
+                    //     $orders_txt .= '<dd>'.trans('tables.color', [], $exhibitor->locale).': '.$order->color.'</dd>';
+                    //     $orders_txt .= '<dd>'.trans('tables.qty', [], $exhibitor->locale).': '.$order->qty.'</dd>';
+                    //     $orders_txt .= '<dd>'.trans('tables.price', [], $exhibitor->locale).': '.$order->price.'</dd>';
+                    // }
+                    // $orders_txt .= '</dl>';
+
+                    // $setting = Setting::take(1)->first();
+
+                    // $body = formatDataForEmail([
+                    //     'orders' => $orders_txt,
+                    //     'tot' => $purchase_data['tot'],
+                    // ], $exhibitor->locale == 'it' ? $setting->email_confirm_order_it : $setting->email_confirm_order_en);
 
                     // $data = [
-                    //     'locale' => $exhibitor->locale,
-                    //     'orders' => $orders,
-                    //     'tot' => $purchase_data['tot']
+                    //     'body' => $body
                     // ];
 
-                    $orders_txt = '<dl>';
-                    foreach($orders as $order) {
-                        $orders_txt .= '<dd>'.trans('entities.furnishing', [], $exhibitor->locale).': '.$order->description.'</dd>';
-                        $orders_txt .= '<dd>'.trans('tables.color', [], $exhibitor->locale).': '.$order->color.'</dd>';
-                        $orders_txt .= '<dd>'.trans('tables.qty', [], $exhibitor->locale).': '.$order->qty.'</dd>';
-                        $orders_txt .= '<dd>'.trans('tables.price', [], $exhibitor->locale).': '.$order->price.'</dd>';
-                    }
-                    $orders_txt .= '</dl>';
+                    // $subject = trans('emails.confirm_order', [], $exhibitor->locale);
+                    // $email_from = env('MAIL_FROM_ADDRESS');
+                    // $email_to = auth()->user()->email;
 
-                    $setting = Setting::take(1)->first();
-
-                    $body = formatDataForEmail([
-                        'orders' => $orders_txt,
-                        'tot' => $purchase_data['tot'],
-                    ], $exhibitor->locale == 'it' ? $setting->email_confirm_order_it : $setting->email_confirm_order_en);
-
-                    $data = [
-                        'body' => $body
-                    ];
-
-                    $subject = trans('emails.confirm_order', [], $exhibitor->locale);
-                    $email_from = env('MAIL_FROM_ADDRESS');
-                    $email_to = auth()->user()->email;
-                    // Mail::send('emails.confirm-order', ['data' => $data], function ($m) use ($email_from, $email_to, $subject) {
+                    // Mail::send('emails.form-data', ['data' => $data], function ($m) use ($email_from, $email_to, $subject) {
                     //     $m->from($email_from, env('MAIL_FROM_NAME'));
                     //     $m->to($email_to)->subject(env('APP_NAME').' '.$subject);
                     // });
-                    Mail::send('emails.form-data', ['data' => $data], function ($m) use ($email_from, $email_to, $subject) {
-                        $m->from($email_from, env('MAIL_FROM_NAME'));
-                        $m->to($email_to)->subject(env('APP_NAME').' '.$subject);
-                    });
 
-                    $orders = DB::table('orders')
-                        ->leftJoin('furnishings', 'orders.furnishing_id', '=', 'furnishings.id')
-                        ->leftJoin('furnishings_translations', function($join) {
-                            $join->on('furnishings.id', '=', 'furnishings_translations.furnishing_id')
-                                ->orOn('furnishings.variant_id', '=', 'furnishings_translations.furnishing_id');
-                        })
-                        ->where([
-                            ['orders.payment_id', '=', $payment->id],
-                            ['orders.exhibitor_id', '=', $exhibitor->id],
-                            ['furnishings_translations.locale', '=', 'it']
-                        ])
-                        ->select('orders.*', 'furnishings_translations.description', 'furnishings.color')
-                        ->get();
+                    // $orders = DB::table('orders')
+                    //     ->leftJoin('furnishings', 'orders.furnishing_id', '=', 'furnishings.id')
+                    //     ->leftJoin('furnishings_translations', function($join) {
+                    //         $join->on('furnishings.id', '=', 'furnishings_translations.furnishing_id')
+                    //             ->orOn('furnishings.variant_id', '=', 'furnishings_translations.furnishing_id');
+                    //     })
+                    //     ->where([
+                    //         ['orders.payment_id', '=', $payment->id],
+                    //         ['orders.exhibitor_id', '=', $exhibitor->id],
+                    //         ['furnishings_translations.locale', '=', 'it']
+                    //     ])
+                    //     ->select('orders.*', 'furnishings_translations.description', 'furnishings.color')
+                    //     ->get();
 
+
+                    // $orders_txt = '<dl>';
+                    // foreach($orders as $order) {
+                    //     $orders_txt .= '<dd>Arredo: '.$order->description.'</dd>';
+                    //     $orders_txt .= '<dd>Colore: '.$order->color.'</dd>';
+                    //     $orders_txt .= '<dd>Quantità: '.$order->qty.'</dd>';
+                    //     $orders_txt .= '<dd>Prezzo: '.$order->price.'</dd>';
+                    // }
+                    // $orders_txt .= '</dl>';
+
+                    // $body = formatDataForEmail([
+                    //     'orders' => $orders_txt,
+                    //     'tot' => $purchase_data['tot'],
+                    //     'company' => $exhibitor->detail->company,
+                    // ], $setting->email_to_admin_notification_confirm_order);
+    
                     // $data = [
-                    //     'locale' => 'it',
-                    //     'orders' => $orders,
-                    //     'tot' => $purchase_data['tot']
+                    //     'body' => $body
                     // ];
 
-                    $orders_txt = '<dl>';
-                    foreach($orders as $order) {
-                        $orders_txt .= '<dd>Arredo: '.$order->description.'</dd>';
-                        $orders_txt .= '<dd>Colore: '.$order->color.'</dd>';
-                        $orders_txt .= '<dd>Quantità: '.$order->qty.'</dd>';
-                        $orders_txt .= '<dd>Prezzo: '.$order->price.'</dd>';
-                    }
-                    $orders_txt .= '</dl>';
-
-                    $body = formatDataForEmail([
-                        'orders' => $orders_txt,
-                        'tot' => $purchase_data['tot'],
-                        'company' => $exhibitor->detail->company,
-                    ], $setting->email_to_admin_notification_confirm_order);
-    
-                    $data = [
-                        'body' => $body
-                    ];
-
-                    $admin_mail_subject = trans('emails.confirm_order', [], 'it');
-                    $admin_mail_email_from = env('MAIL_FROM_ADDRESS');
-                    $admin_mail_email_to = env('MAIL_ADMIN');
-                    Mail::send('emails.form-data', ['data' => $data], function ($m) use ($admin_mail_email_from, $admin_mail_email_to, $admin_mail_subject) {
-                        $m->from($admin_mail_email_from, env('MAIL_FROM_NAME'));
-                        $m->to($admin_mail_email_to)->subject(env('APP_NAME').' '.$admin_mail_subject);
-                    });
+                    // $admin_mail_subject = trans('emails.confirm_order', [], 'it');
+                    // $admin_mail_email_from = env('MAIL_FROM_ADDRESS');
+                    // $admin_mail_email_to = env('MAIL_ADMIN');
+                    // Mail::send('emails.form-data', ['data' => $data], function ($m) use ($admin_mail_email_from, $admin_mail_email_to, $admin_mail_subject) {
+                    //     $m->from($admin_mail_email_from, env('MAIL_FROM_NAME'));
+                    //     $m->to($admin_mail_email_to)->subject(env('APP_NAME').' '.$admin_mail_subject);
+                    // });
 
                     return redirect('admin/dashboard/')
                         ->with('success', trans('generals.payment_furnishing_ok', ['event' => $event->title]));
@@ -550,6 +571,41 @@ class PaymentController extends Controller
     {
         return redirect('admin/dashboard/')
             ->withErrors(trans('generals.user_payment_declined'));
+    }
+
+    public function insertOrder($exhibitor_id, $row, $event_id, $paymentId = null)
+    {
+        return Order::create([
+            'exhibitor_id' => $exhibitor_id,
+            'furnishing_id' => $row->id,
+            'qty' => $row->qty,
+            'is_supplied' => $row->is_supplied,
+            'price' => $row->price,
+            'event_id' => $event_id,
+            'payment_id' => $paymentId,
+            'created_at' => now(),
+            'updated_at' => now()
+        ]);
+    }
+
+    public function getOrders($exhibitorId, $eventId, $paymentId, $exhibitorLocale)
+    {
+        $query = DB::table('orders')
+            ->leftJoin('furnishings', 'orders.furnishing_id', '=', 'furnishings.id')
+            ->leftJoin('furnishings_translations', function ($join) {
+                $join->on('furnishings.id', '=', 'furnishings_translations.furnishing_id')
+                    ->orOn('furnishings.variant_id', '=', 'furnishings_translations.furnishing_id');
+            })
+            ->where('orders.exhibitor_id', '=', $exhibitorId)
+            ->where('orders.event_id','=', $eventId)
+            ->where('furnishings_translations.locale', '=', $exhibitorLocale)
+            ->select('orders.*', 'furnishings_translations.description', 'furnishings.color');
+
+        if ($paymentId !== null) {
+            $query->where('orders.payment_id', '=', $paymentId);
+        }
+
+        return $query->get();
     }
 
     public function sendFurnishingEmails($exhibitor, $authUser, $locale, $isToAdmin, $total, $request)
@@ -705,5 +761,37 @@ class PaymentController extends Controller
         }
         $orders_txt .= '</dl>';
         return $orders_txt;
+    }
+
+    public function insertPayment($arr, $purchase_data)
+    {
+        $payment = new Payment();
+        $payment->payment_id = $arr['id'];
+        $payment->payer_id = $arr['payer']['payer_info']['payer_id'];
+        $payment->payer_email = $arr['payer']['payer_info']['email'];
+        $payment->amount = $arr['transactions'][0]['amount']['total'];
+        $payment->currency = env('PAYPAL_CURRENCY');
+        $payment->payment_status = $arr['state'];
+        $payment->event_id = $purchase_data['event_id'];
+        $payment->user_id = $purchase_data['user_id'];
+        $payment->stand_type_id = $purchase_data['stand_type_id'];
+        $payment->n_modules = $purchase_data['n_modules'];
+        $payment->type_of_payment = $purchase_data['type_of_payment'];
+        $payment->save();
+
+        // $payment = new Payment();
+        // $payment->payment_id = $stripeCharge->id;
+        // $payment->payer_id = $stripeCustomer->id;
+        // $payment->payer_email = $authUser->email;
+        // $payment->amount = $totalPrice;
+        // $payment->currency = $currency;
+        // $payment->payment_status = 'succeeded';
+        // $payment->event_id = $request->event_id;
+        // $payment->user_id = $authUser->id;
+        // $payment->stand_type_id = $standID;
+        // $payment->n_modules = $n_modules;
+        // $payment->type_of_payment = $request->type_of_payment;
+        // $payment->save();
+        return $payment;
     }
 }
