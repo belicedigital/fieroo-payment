@@ -15,6 +15,7 @@ use DB;
 use \Carbon\Carbon;
 use Dompdf\Dompdf;
 use Dompdf\Options;
+use Stripe\PaymentIntent;
 
 class StripePaymentController extends Controller
 {
@@ -79,6 +80,20 @@ class StripePaymentController extends Controller
             // Ottenere i dati del cliente da Stripe
             $stripeCustomer = $request->user()->exhibitor->asStripeCustomer();
 
+            // Setup Payment Intent
+            $paymentIntent = PaymentIntent::retrieve($stripeCharge->payment_intent);
+            // $paymentIntent = PaymentIntent::retrieve($request->paymentMethodId);
+
+            // se viene richiesto il 3DSecure allora fare redirect di conferma
+            if ($paymentIntent->status === 'requires_action') {
+
+                return redirect()->route('3dsecure.auth', [
+                    'payment_intent_client_secret' => $paymentIntent->client_secret,
+                    'success_url' => route('subscription.success'),
+                    'cancel_url' => route('subscription.cancel'),
+                ]);
+            }
+
             //Insert payment in DB
             $this->insertPayment($stripeCharge, $stripeCustomer, $authUser, $request, $currency, $totalPrice, $request->stand_selected, $request->modules_selected);
 
@@ -113,6 +128,19 @@ class StripePaymentController extends Controller
                 ->back()
                 ->withErrors($th->getMessage());
         }
+    }
+
+    public function auth3DSecure(Request $request)
+    {
+        $paymentIntentId = $request->payment_intent_id;
+
+        // Effettua il reindirizzamento dell'utente alla pagina di autenticazione 3D Secure
+        return view('payment::auth_3d_secure', compact('paymentIntentId'));
+    }
+
+    public function handle3DSecure(Request $request)
+    {
+        dd($request);
     }
 
     public function payFurnishings(Request $request)
