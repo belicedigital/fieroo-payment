@@ -15,7 +15,6 @@ use DB;
 use \Carbon\Carbon;
 use Dompdf\Dompdf;
 use Dompdf\Options;
-use Stripe\PaymentIntent;
 use Illuminate\Support\Facades\Log;
 use Laravel\Cashier\Exceptions\IncompletePayment;
 
@@ -79,8 +78,6 @@ class StripePaymentController extends Controller
                 $stripeMetadata
             );
 
-            // dd($stripeCharge);
-
             // Ottenere i dati del cliente da Stripe
             $stripeCustomer = $request->user()->exhibitor->asStripeCustomer();
 
@@ -138,6 +135,8 @@ class StripePaymentController extends Controller
             return redirect('admin/dashboard/')
                 ->with('success', trans('generals.payment_subscription_ok', ['event' => $event->title]));
 
+        } catch(IncompletePayment $exception) {
+            return redirect()->route('cashier.payment', [$exception->payment->id, 'redirect' => '3dsecure.auth']);
         } catch(\Throwable $th){
             return redirect()
                 ->back()
@@ -328,13 +327,6 @@ class StripePaymentController extends Controller
                 'customer' => $customer->id,
                 'receipt_email' => $authUser->email,
                 'metadata' => $metadata,
-                'confirmation_method' => 'manual',
-                'confirm' => true,
-                'payment_method_options' => [
-                    'card' => [
-                        'request_three_d_secure' => 'automatic',
-                    ],
-                ],
             ]
         );
     }
