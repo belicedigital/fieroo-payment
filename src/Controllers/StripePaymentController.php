@@ -86,7 +86,7 @@ class StripePaymentController extends Controller
 
         } catch(IncompletePayment $exception) {
             // dd($exception);
-            $stripeCharge = new stdClass();
+            $stripeCharge = new \stdClass();
             $stripeCharge->id = $exception->payment->paymentIntent->id;
             $paymentMethod = PaymentMethod::retrieve($exception->payment->paymentIntent->payment_method);
             dd($paymentMethod);
