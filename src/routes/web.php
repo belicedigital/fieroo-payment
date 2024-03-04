@@ -6,7 +6,7 @@ use Fieroo\Payment\Controllers\StripePaymentController;
 Route::group(['prefix' => 'admin', 'middleware' => ['web','auth']], function() {
     Route::group(['prefix' => 'paypal'], function() {
         Route::post('/', [PaymentController::class, 'pay'])->name('payment');
-        Route::post('/furnishings-payment', [PaymentController::class, 'payFurnishings'])->name('furnishings-payment');
+        Route::post('/sfurnishings', [PaymentController::class, 'payFurnishings'])->name('spayment-furnishings');
         Route::get('/success', [PaymentController::class, 'success']);
         Route::get('/success-furnishings', [PaymentController::class, 'successFurnishings']);
         Route::get('/error', [PaymentController::class, 'error']);
