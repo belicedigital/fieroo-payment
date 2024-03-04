@@ -18,6 +18,7 @@ use Dompdf\Options;
 use Illuminate\Support\Facades\Log;
 use Laravel\Cashier\Exceptions\IncompletePayment;
 use Laravel\Cashier\PaymentMethod;
+use Session;
 
 class StripePaymentController extends Controller
 {
@@ -79,7 +80,15 @@ class StripePaymentController extends Controller
                 $stripeMetadata
             );
 
-            $this->compileDataStripeAndSendMail($request, $stripeCharge, $authUser, $currency, $totalPrice, $exhibitor);
+            Session::put('paymentDataSession', [
+                'request' => $request,
+                'stripeCharge' => $stripeCharge,
+                'authUser' => $authUser,
+                'currency' => $currency,
+                'totalPrice' => $totalPrice,
+                'exhibitor' => $exhibitor,
+            ]);
+            $this->compileDataStripeAndSendMail();
 
             return redirect('admin/dashboard/')
                 ->with('success', trans('generals.payment_subscription_ok', ['event' => $event->title]));
@@ -96,7 +105,7 @@ class StripePaymentController extends Controller
             $stripeCharge->pm_type = 'card';
         //     $updt_exhibitor->pm_type = $stripeCharge->charges->data[0]->payment_method_details->type;
         // $updt_exhibitor->pm_last_four = $stripeCharge->charges->data[0]->payment_method_details->card->last4;
-            $redirectRoute = route('compileDataStripeAndSendMail', [
+            Session::put('paymentDataSession', [
                 'request' => $request,
                 'stripeCharge' => $stripeCharge,
                 'authUser' => $authUser,
@@ -104,6 +113,15 @@ class StripePaymentController extends Controller
                 'totalPrice' => $totalPrice,
                 'exhibitor' => $exhibitor,
             ]);
+            // $redirectRoute = route('compileDataStripeAndSendMail', [
+            //     'request' => $request,
+            //     'stripeCharge' => $stripeCharge,
+            //     'authUser' => $authUser,
+            //     'currency' => $currency,
+            //     'totalPrice' => $totalPrice,
+            //     'exhibitor' => $exhibitor,
+            // ]);
+            $redirectRoute = route('compileDataStripeAndSendMail');
             return redirect()->route('cashier.payment', [$exception->payment->id, 'redirect' => $redirectRoute]);
         } catch(\Throwable $th){
             return redirect()
@@ -112,8 +130,16 @@ class StripePaymentController extends Controller
         }
     }
 
-    public function compileDataStripeAndSendMail($request, $stripeCharge, $authUser, $currency, $totalPrice, $exhibitor)
+    public function compileDataStripeAndSendMail()
     {
+        $fromSession = Session::get('paymentDataSession');
+        $request = $fromSession['request'];
+        $stripeCharge = $fromSession['stripeCharge'];
+        $authUser = $fromSession['authUser'];
+        $currency = $fromSession['currency'];
+        $totalPrice = $fromSession['totalPrice'];
+        $exhibitor = $fromSession['exhibitor'];
+        Session::forget('paymentDataSession');
         // Ottenere i dati del cliente da Stripe
         $stripeCustomer = $request->user()->exhibitor->asStripeCustomer();
 
