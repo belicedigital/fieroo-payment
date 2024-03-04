@@ -72,49 +72,57 @@ class StripePaymentController extends Controller
                 'totalPrice_iva' => $totalPrice_iva,
             ];
 
-            // $stripeCharge = $this->chargeStripe(
-            //     $request->user(),
-            //     $amount_iva,
-            //     $request->paymentMethodId,
-            //     $customer,
-            //     $stripeMetadata
-            // );
+            $stripeCharge = $this->chargeStripe(
+                $request->user(),
+                $amount_iva,
+                $request->paymentMethodId,
+                $customer,
+                $stripeMetadata
+            );
 
-            // $stripeIntent = $request->user()->exhibitor()->pay(
-                
-            // )
-
-            $stripeCustomer = $request->user()->exhibitor->asStripeCustomer();
-
-            //Insert payment in DB
-            $this->insertPayment($stripeCharge, $stripeCustomer, $authUser, $request, $currency, $totalPrice, $request->stand_selected, $request->modules_selected);
-
-            //Update Exhibitor payment data
-            $this->updateExhibitor($exhibitor, $stripeCharge);
-
-            // send email to user for subscription
-            $subject = trans('emails.event_subscription', [], $exhibitor->locale);
-            $email_from = env('MAIL_FROM_ADDRESS');
-            $email_to = $authUser->email;
-            $setting = Setting::take(1)->first();
-            $emailTemplate = $exhibitor->locale == 'it' ? $setting->email_event_subscription_it : $setting->email_event_subscription_en;
-            $emailFormatData = [
-                'event_title' => $event->title,
-                'event_start' => Carbon::parse($event->start)->format('d/m/Y'),
-                'event_end' => Carbon::parse($event->end)->format('d/m/Y'),
-                'responsible' => $exhibitor->detail->responsible,
-            ];
-
-            $pdfName = 'subscription-confirmation.pdf';
-            $pdfContent = $this->generateOrderPDF($request);
-            $this->sendEmail($subject, $emailFormatData, $emailTemplate, $email_from, $email_to, $pdfContent, $pdfName);
-
-            $email_admin = env('MAIL_ADMIN');
-            $this->sendEmail($subject, $emailFormatData, $emailTemplate, $email_from, $email_admin, $pdfContent, $pdfName);
+            Session::put('paymentDataSession', [
+                'request' => $request,
+                'stripeCharge' => $stripeCharge,
+                'authUser' => $authUser,
+                'currency' => $currency,
+                'totalPrice' => $totalPrice,
+                'exhibitor' => $exhibitor,
+            ]);
+            $this->compileDataStripeAndSendMail();
 
             return redirect('admin/dashboard/')
                 ->with('success', trans('generals.payment_subscription_ok', ['event' => $event->title]));
 
+        } catch(IncompletePayment $exception) {
+            // dd($exception);
+            $stripeCharge = new \stdClass();
+            $stripeCharge->id = $exception->payment->id;
+            // $paymentMethod = PaymentMethod::find($exception->payment->payment_method);
+            // dd($paymentMethod);
+            // dd($exhibitor->findPaymentMethod($exception->payment->payment_method));
+            // dd($exhibitor->paymentMethods());
+            $stripeCharge->pm_last_four = '3220';
+            $stripeCharge->pm_type = 'card';
+        //     $updt_exhibitor->pm_type = $stripeCharge->charges->data[0]->payment_method_details->type;
+        // $updt_exhibitor->pm_last_four = $stripeCharge->charges->data[0]->payment_method_details->card->last4;
+            Session::put('paymentDataSession', [
+                'request' => $request,
+                'stripeCharge' => $stripeCharge,
+                'authUser' => $authUser,
+                'currency' => $currency,
+                'totalPrice' => $totalPrice,
+                'exhibitor' => $exhibitor,
+            ]);
+            // $redirectRoute = route('compileDataStripeAndSendMail', [
+            //     'request' => $request,
+            //     'stripeCharge' => $stripeCharge,
+            //     'authUser' => $authUser,
+            //     'currency' => $currency,
+            //     'totalPrice' => $totalPrice,
+            //     'exhibitor' => $exhibitor,
+            // ]);
+            $redirectRoute = route('compileDataStripeAndSendMail');
+            return redirect()->route('cashier.payment', [$exception->payment->id, 'redirect' => $redirectRoute]);
         } catch(\Throwable $th){
             return redirect()
                 ->back()
@@ -122,60 +130,60 @@ class StripePaymentController extends Controller
         }
     }
 
-    // public function compileDataStripeAndSendMail()
-    // {
-    //     $fromSession = Session::get('paymentDataSession');
-    //     $request = $fromSession['request'];
-    //     $stripeCharge = $fromSession['stripeCharge'];
-    //     $authUser = $fromSession['authUser'];
-    //     $currency = $fromSession['currency'];
-    //     $totalPrice = $fromSession['totalPrice'];
-    //     $exhibitor = $fromSession['exhibitor'];
-    //     Session::forget('paymentDataSession');
-    //     // Ottenere i dati del cliente da Stripe
-    //     $stripeCustomer = $request->user()->exhibitor->asStripeCustomer();
+    public function compileDataStripeAndSendMail()
+    {
+        $fromSession = Session::get('paymentDataSession');
+        $request = $fromSession['request'];
+        $stripeCharge = $fromSession['stripeCharge'];
+        $authUser = $fromSession['authUser'];
+        $currency = $fromSession['currency'];
+        $totalPrice = $fromSession['totalPrice'];
+        $exhibitor = $fromSession['exhibitor'];
+        Session::forget('paymentDataSession');
+        // Ottenere i dati del cliente da Stripe
+        $stripeCustomer = $request->user()->exhibitor->asStripeCustomer();
 
-    //     //Insert payment in DB
-    //     $this->insertPayment($stripeCharge, $stripeCustomer, $authUser, $request, $currency, $totalPrice, $request->stand_selected, $request->modules_selected);
+        //Insert payment in DB
+        $this->insertPayment($stripeCharge, $stripeCustomer, $authUser, $request, $currency, $totalPrice, $request->stand_selected, $request->modules_selected);
 
-    //     //Update Exhibitor payment data
-    //     $this->updateExhibitor($exhibitor, $stripeCharge);
+        //Update Exhibitor payment data
+        $this->updateExhibitor($exhibitor, $stripeCharge);
 
-    //     // send email to user for subscription
-    //     $subject = trans('emails.event_subscription', [], $exhibitor->locale);
-    //     $email_from = env('MAIL_FROM_ADDRESS');
-    //     $email_to = $authUser->email;
-    //     $setting = Setting::take(1)->first();
-    //     $emailTemplate = $exhibitor->locale == 'it' ? $setting->email_event_subscription_it : $setting->email_event_subscription_en;
-    //     $emailFormatData = [
-    //         'event_title' => $event->title,
-    //         'event_start' => Carbon::parse($event->start)->format('d/m/Y'),
-    //         'event_end' => Carbon::parse($event->end)->format('d/m/Y'),
-    //         'responsible' => $exhibitor->detail->responsible,
-    //     ];
+        // send email to user for subscription
+        $subject = trans('emails.event_subscription', [], $exhibitor->locale);
+        $email_from = env('MAIL_FROM_ADDRESS');
+        $email_to = $authUser->email;
+        $setting = Setting::take(1)->first();
+        $emailTemplate = $exhibitor->locale == 'it' ? $setting->email_event_subscription_it : $setting->email_event_subscription_en;
+        $emailFormatData = [
+            'event_title' => $event->title,
+            'event_start' => Carbon::parse($event->start)->format('d/m/Y'),
+            'event_end' => Carbon::parse($event->end)->format('d/m/Y'),
+            'responsible' => $exhibitor->detail->responsible,
+        ];
 
-    //     $pdfName = 'subscription-confirmation.pdf';
-    //     $pdfContent = $this->generateOrderPDF($request);
-    //     $this->sendEmail($subject, $emailFormatData, $emailTemplate, $email_from, $email_to, $pdfContent, $pdfName);
+        $pdfName = 'subscription-confirmation.pdf';
+        $pdfContent = $this->generateOrderPDF($request);
+        $this->sendEmail($subject, $emailFormatData, $emailTemplate, $email_from, $email_to, $pdfContent, $pdfName);
 
-    //     $email_admin = env('MAIL_ADMIN');
-    //     $this->sendEmail($subject, $emailFormatData, $emailTemplate, $email_from, $email_admin, $pdfContent, $pdfName);
+        $email_admin = env('MAIL_ADMIN');
+        $this->sendEmail($subject, $emailFormatData, $emailTemplate, $email_from, $email_admin, $pdfContent, $pdfName);
 
-    //     return redirect()->to('admin/dashboard');
-    // }
+        return redirect()->to('admin/dashboard');
+    }
 
-    // public function auth3DSecure(Request $request)
-    // {
-    //     $paymentIntentId = $request->payment_intent_id;
+    public function auth3DSecure(Request $request)
+    {
+        $paymentIntentId = $request->payment_intent_id;
 
-    //     // Effettua il reindirizzamento dell'utente alla pagina di autenticazione 3D Secure
-    //     return view('payment::auth_3d_secure', compact('paymentIntentId'));
-    // }
+        // Effettua il reindirizzamento dell'utente alla pagina di autenticazione 3D Secure
+        return view('payment::auth_3d_secure', compact('paymentIntentId'));
+    }
 
-    // public function handle3DSecure(Request $request)
-    // {
-    //     dd($request);
-    // }
+    public function handle3DSecure(Request $request)
+    {
+        dd($request);
+    }
 
     public function payFurnishings(Request $request)
     {

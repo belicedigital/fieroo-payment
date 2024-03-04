@@ -12,11 +12,14 @@ use Fieroo\Payment\Models\Order;
 use Fieroo\Exhibitors\Models\Exhibitor;
 use Fieroo\Bootstrapper\Models\User;
 use Fieroo\Bootstrapper\Models\Setting;
+use Fieroo\Stands\Models\StandsTypeTranslation;
 use Validator;
 use DB;
 use Session;
 use Mail;
 use \Carbon\Carbon;
+use Dompdf\Dompdf;
+use Dompdf\Options;
 
 class PaymentController extends Controller
 {
@@ -547,5 +550,160 @@ class PaymentController extends Controller
     {
         return redirect('admin/dashboard/')
             ->withErrors(trans('generals.user_payment_declined'));
+    }
+
+    public function sendFurnishingEmails($exhibitor, $authUser, $locale, $isToAdmin, $total, $request)
+    {
+        // Send email to exhibitor
+        $subject = trans('emails.confirm_order', [], $locale);
+        $email_from = env('MAIL_FROM_ADDRESS');
+        $email_to = $authUser->email;
+
+        $setting = Setting::take(1)->first();
+        $emailTemplate = $locale == 'it' ? $setting->email_confirm_order_it : $setting->email_confirm_order_en;
+
+        $labels = [
+            'description' => trans('entities.furnishing', [], $locale),
+            'color' => trans('tables.color', [], $locale),
+            'qty' => trans('tables.qty', [], $locale),
+            'price' => trans('tables.price', [], $locale),
+        ];
+
+        $orders = $this->getOrders($exhibitor->id, $request->event_id, null, $locale);
+        $orders_txt = $this->generateOrderEmailSummary($orders, $labels);
+
+        $emailFormatData = [
+            'orders' => $orders_txt,
+            'tot' => $total,
+        ];
+
+        $pdfName = 'order-confirmation.pdf';
+        $pdfContent = $this->generateOrderPDF($request, 'order');
+
+        $this->sendEmail($subject, $emailFormatData, $emailTemplate, $email_from, $email_to, $pdfContent, $pdfName);
+
+        // Send email to admin if is needed
+        if ($isToAdmin) {
+
+            $admin_mail_subject = trans('emails.confirm_order', [], 'it');
+            $admin_mail_email_to = env('MAIL_ADMIN');
+
+            $emailTemplateAdmin = $setting->email_to_admin_notification_confirm_order;
+            $ordersAdmin = $this->getOrders($exhibitor->id, $request->event_id, null, 'it');
+            $orders_txt_admin = $this->generateOrderEmailSummary($ordersAdmin, $labels);
+
+            $emailFormatDataAdmin = [
+                'orders' => $orders_txt_admin,
+                'tot' => $total,
+                'company' => $exhibitor->detail->company,
+            ];
+
+            $this->sendEmail($admin_mail_subject, $emailFormatDataAdmin, $emailTemplateAdmin, $email_from, $admin_mail_email_to, $pdfContent, $pdfName);
+        }
+    }
+
+    public function generateOrderPDF(Request $request, string $typeOfPDF = 'subscription')
+    {
+        try {
+            //Event and setting data
+            $event = Event::findOrFail($request->event_id);
+            $setting = Setting::take(1)->first();
+
+            // Create a DOMPDF object
+            $pdfOptions = new Options();
+            $pdfOptions->set('isHtml5ParserEnabled', true);
+            $pdfOptions->set('isPhpEnabled', true);
+            $pdfOptions->set('isRemoteEnabled', true);
+            $pdfOptions->set('defaultMediaType', 'all');
+            $pdfOptions->setDefaultFont('dejavu sans');
+            $pdf = new Dompdf($pdfOptions);
+
+            // Exhibitor data
+            $exhibitor = auth()->user()->exhibitor;
+            $data_for_billing = $this->getExhibitorData($exhibitor);
+
+            // Create a common set of data
+            $commonData = [
+                'event' => $event,
+                'iva' => $setting->iva,
+                'exhibitor' => $data_for_billing,
+                'paymentId' => $request->paymentMethodId
+            ];
+
+            if ($typeOfPDF == 'subscription') {
+
+                //Stand data for subscription event
+                $stand = StandsTypeTranslation::where([
+                    ['stand_type_id', '=', $request->stand_selected],
+                    ['locale', '=', $exhibitor->locale]
+                ])->firstOrFail();
+                $totalPrice = $stand->price * $request->modules_selected;
+
+                // Calculate tax and total
+                $totalTax = $totalPrice/100 * $setting->iva;
+                $totalTaxIncl = $totalPrice + $totalTax;
+
+                // Add specific data for the 'subscription' type
+                $pdfView = view('payment::pdf.subscription-conf',  array_merge($commonData,  [
+                    'totalPrice' => $totalPrice,
+                    'totalTaxIncl' => $totalTaxIncl,
+                    'totalTax' => $totalTax,
+                    'stand' => $stand,
+                    'qty' => $request->modules_selected,
+                ]));
+            } else {
+
+                // Add specific data for the order case
+                $rows = json_decode($request->data);
+
+                //Get total of items
+                $tot = 0;
+                foreach($rows as $row) {
+                    $tot += $row->price;
+                }
+
+                // Calculate tax and total
+                $totTax = $tot/100 * $setting->iva;
+                $totTaxIncl = $tot + $totTax;
+
+                $pdfView = view('payment::pdf.order-conf', array_merge($commonData, [
+                    'orders' => $this->getOrders($exhibitor->id, $request->event_id, null, $exhibitor->locale),
+                    'ordersTot' => $tot,
+                    'ordersTotTaxIncl' => $totTaxIncl,
+                    'totTax' => $totTax
+                ]));
+            }
+
+            // Convert to Html
+            $html = $pdfView->render();
+
+            // Load HTML in Dompdf
+            $pdf->loadHtml($html);
+
+            // Set rendering option
+            $pdf->setPaper('A4');
+
+            // Render PDF
+            $pdf->render();
+
+            return $pdf->output();
+
+        } catch (\Throwable $th) {
+            return redirect()
+                ->back()
+                ->withErrors($th->getMessage());
+        }
+    }
+
+    public function generateOrderEmailSummary($orders, $labels)
+    {
+        $orders_txt = '<dl>';
+        foreach ($orders as $order) {
+            foreach ($labels as $field => $label) {
+                $orders_txt .= '<dd>' . $label . ': ' . $order->$field . '</dd>';
+            }
+        }
+        $orders_txt .= '</dl>';
+        return $orders_txt;
     }
 }
