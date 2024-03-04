@@ -88,9 +88,9 @@ class StripePaymentController extends Controller
             // dd($exception);
             $stripeCharge = new \stdClass();
             $stripeCharge->id = $exception->payment->id;
-            $paymentMethod = PaymentMethod::find($exception->payment->payment_method);
-            dd($paymentMethod);
-            // $exhibitor->findPaymentMethod($exception->payment->payment_method);
+            // $paymentMethod = PaymentMethod::find($exception->payment->payment_method);
+            // dd($paymentMethod);
+            dd($exhibitor->findPaymentMethod($exception->payment->payment_method));
             dd($exhibitor->paymentMethods());
             $stripeCharge->pm_last_four = $paymentMethod->card->last4;
             $stripeCharge->pm_type = $paymentMethod->type;
