@@ -90,17 +90,17 @@ class StripePaymentController extends Controller
             // dd($paymentIntent);
             // Log::info('paymentIntent retrieve');
             // Log::info($paymentIntent->status);
-            // $paymentIntent = PaymentIntent::retrieve($request->paymentMethodId);
+            $paymentIntent = PaymentIntent::retrieve($request->paymentMethodId);
 
             // se viene richiesto il 3DSecure allora fare redirect di conferma
-            // if ($paymentIntent->status === 'requires_action') {
-            //     Log::info('azione richiesta 3dsecure');
-            //     return redirect()->route('3dsecure.auth', [
-            //         'payment_intent_client_secret' => $paymentIntent->client_secret,
-            //         'success_url' => route('subscription.success'),
-            //         'cancel_url' => route('subscription.cancel'),
-            //     ]);
-            // }
+            if ($paymentIntent->status === 'requires_action') {
+                Log::info('azione richiesta 3dsecure');
+                return redirect()->route('cashier.payment', [
+                    'payment_intent_client_secret' => $paymentIntent->client_secret,
+                    'success_url' => route('3dsecure.auth'),
+                    'cancel_url' => route('3dsecure.auth'),
+                ]);
+            }
 
             //Insert payment in DB
             $this->insertPayment($stripeCharge, $stripeCustomer, $authUser, $request, $currency, $totalPrice, $request->stand_selected, $request->modules_selected);
@@ -131,8 +131,6 @@ class StripePaymentController extends Controller
             return redirect('admin/dashboard/')
                 ->with('success', trans('generals.payment_subscription_ok', ['event' => $event->title]));
 
-        } catch(IncompletePayment $exception) {
-            return redirect()->route('cashier.payment', [$exception->payment->id, 'redirect' => route('3dsecure.auth')]);
         } catch(\Throwable $th){
             return redirect()
                 ->back()
