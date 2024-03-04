@@ -84,8 +84,15 @@ class StripePaymentController extends Controller
                 ->with('success', trans('generals.payment_subscription_ok', ['event' => $event->title]));
 
         } catch(IncompletePayment $exception) {
-            dd($authUser);
-            return redirect()->route('cashier.payment', [$exception->payment->id, 'redirect' => route('compileDataStripeAndSendMail')]);
+            $redirectRoute = route('compileDataStripeAndSendMail', [
+                'request' => $request,
+                'stripeCharge' => $stripeCharge,
+                'authUser' => $authUser,
+                'currency' => $currency,
+                'totalPrice' => $totalPrice,
+                'exhibitor' => $exhibitor,
+            ]);
+            return redirect()->route('cashier.payment', [$exception->payment->id, 'redirect' => $redirectRoute]);
         } catch(\Throwable $th){
             return redirect()
                 ->back()
