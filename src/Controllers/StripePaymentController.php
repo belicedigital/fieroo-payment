@@ -84,6 +84,11 @@ class StripePaymentController extends Controller
                 ->with('success', trans('generals.payment_subscription_ok', ['event' => $event->title]));
 
         } catch(IncompletePayment $exception) {
+            dd($exception);
+            $stripeCharge = new stdClass();
+            // $exception->payment->id oppure $charge->id
+        //     $updt_exhibitor->pm_type = $stripeCharge->charges->data[0]->payment_method_details->type;
+        // $updt_exhibitor->pm_last_four = $stripeCharge->charges->data[0]->payment_method_details->card->last4;
             $redirectRoute = route('compileDataStripeAndSendMail', [
                 'request' => $request,
                 'stripeCharge' => $stripeCharge,
