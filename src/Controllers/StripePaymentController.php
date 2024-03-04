@@ -17,6 +17,7 @@ use Dompdf\Dompdf;
 use Dompdf\Options;
 use Illuminate\Support\Facades\Log;
 use Laravel\Cashier\Exceptions\IncompletePayment;
+use Stripe\PaymentMethod;
 
 class StripePaymentController extends Controller
 {
@@ -84,9 +85,13 @@ class StripePaymentController extends Controller
                 ->with('success', trans('generals.payment_subscription_ok', ['event' => $event->title]));
 
         } catch(IncompletePayment $exception) {
-            dd($exception);
+            // dd($exception);
             $stripeCharge = new stdClass();
-            // $exception->payment->id oppure $charge->id
+            $stripeCharge->id = $exception->payment->paymentIntent->id;
+            $paymentMethod = PaymentMethod::retrieve($exception->payment->paymentIntent->payment_method);
+            dd($paymentMethod);
+            $stripeCharge->pm_last_four = $paymentMethod->card->last4;
+            $stripeCharge->pm_type = $paymentMethod->type;
         //     $updt_exhibitor->pm_type = $stripeCharge->charges->data[0]->payment_method_details->type;
         // $updt_exhibitor->pm_last_four = $stripeCharge->charges->data[0]->payment_method_details->card->last4;
             $redirectRoute = route('compileDataStripeAndSendMail', [
