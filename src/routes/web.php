@@ -12,6 +12,7 @@ Route::group(['prefix' => 'admin', 'middleware' => ['web','auth']], function() {
         Route::get('/error', [PaymentController::class, 'error']);
     });
 
+    // se commento queste rotte poi il deploy non funziona
     Route::post('stripe-payment', [StripePaymentController::class, 'payment'])->name('stripe-payment');
     Route::post('/furnishings', [StripePaymentController::class, 'payFurnishings'])->name('payment-furnishings');
 });
