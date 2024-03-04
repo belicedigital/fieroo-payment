@@ -93,6 +93,8 @@ class StripePaymentController extends Controller
 
             // $paymentIntent = $exhibitor->createSetupIntent();
 
+            dd($stripeCharge);
+
             $paymentIntent = PaymentIntent::retrieve($stripeCharge->stripe_id);
 
             // se viene richiesto il 3DSecure allora fare redirect di conferma
