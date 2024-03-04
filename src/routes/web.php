@@ -16,5 +16,5 @@ Route::group(['prefix' => 'admin', 'middleware' => ['web','auth']], function() {
     Route::get('/3dsecure/auth', [StripePaymentController::class, 'auth3DSecure'])->name('3dsecure.auth');
     Route::post('/handle-3dsecure', [StripePaymentController::class, 'handle3DSecure'])->name('handle.3dsecure');
 
-    Route::get('compileDataStripeAndSendMail', [StripeController::class, 'compileDataStripeAndSendMail'])->name('compileDataStripeAndSendMail');
+    Route::get('compileDataStripeAndSendMail', [StripePaymentController::class, 'compileDataStripeAndSendMail'])->name('compileDataStripeAndSendMail');
 });
