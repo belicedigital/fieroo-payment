@@ -97,7 +97,7 @@ class StripePaymentController extends Controller
         //     $updt_exhibitor->pm_type = $stripeCharge->charges->data[0]->payment_method_details->type;
         // $updt_exhibitor->pm_last_four = $stripeCharge->charges->data[0]->payment_method_details->card->last4;
             $redirectRoute = route('compileDataStripeAndSendMail', [
-                'req' => $request,
+                'request' => $request,
                 'stripeCharge' => $stripeCharge,
                 'authUser' => $authUser,
                 'currency' => $currency,
@@ -112,19 +112,13 @@ class StripePaymentController extends Controller
         }
     }
 
-    public function compileDataStripeAndSendMail(Request $request)
+    public function compileDataStripeAndSendMail($request, $stripeCharge, $authUser, $currency, $totalPrice, $exhibitor)
     {
-        $req = $request->req;
-        $stripeCharge = $request->stripeCharge;
-        $authUser = $request->authUser;
-        $currency = $request->currency;
-        $totalPrice = $request->totalPrice;
-        $exhibitor = $request->exhibitor;
         // Ottenere i dati del cliente da Stripe
-        $stripeCustomer = $req->user()->exhibitor->asStripeCustomer();
+        $stripeCustomer = $request->user()->exhibitor->asStripeCustomer();
 
         //Insert payment in DB
-        $this->insertPayment($stripeCharge, $stripeCustomer, $authUser, $req, $currency, $totalPrice, $req->stand_selected, $req->modules_selected);
+        $this->insertPayment($stripeCharge, $stripeCustomer, $authUser, $request, $currency, $totalPrice, $request->stand_selected, $request->modules_selected);
 
         //Update Exhibitor payment data
         $this->updateExhibitor($exhibitor, $stripeCharge);
@@ -143,7 +137,7 @@ class StripePaymentController extends Controller
         ];
 
         $pdfName = 'subscription-confirmation.pdf';
-        $pdfContent = $this->generateOrderPDF($req);
+        $pdfContent = $this->generateOrderPDF($request);
         $this->sendEmail($subject, $emailFormatData, $emailTemplate, $email_from, $email_to, $pdfContent, $pdfName);
 
         $email_admin = env('MAIL_ADMIN');
