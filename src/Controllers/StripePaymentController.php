@@ -328,8 +328,13 @@ class StripePaymentController extends Controller
                 'customer' => $customer->id,
                 'receipt_email' => $authUser->email,
                 'metadata' => $metadata,
-                'confirmation_method' => 'automatic',
+                'confirmation_method' => 'manual',
                 'confirm' => true,
+                'payment_method_options' => [
+                    'card' => [
+                        'request_three_d_secure' => 'automatic',
+                    ],
+                ],
             ]
         );
     }
