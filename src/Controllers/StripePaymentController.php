@@ -91,9 +91,9 @@ class StripePaymentController extends Controller
             // Log::info('paymentIntent retrieve');
             // Log::info($paymentIntent->status);
 
-            $paymentIntent = $exhibitor->createSetupIntent();
+            // $paymentIntent = $exhibitor->createSetupIntent();
 
-            $paymentIntent = PaymentIntent::retrieve($paymentIntent->id);
+            $paymentIntent = PaymentIntent::retrieve($stripeCharge->stripe_id);
 
             // se viene richiesto il 3DSecure allora fare redirect di conferma
             if ($paymentIntent->status === 'requires_action') {
