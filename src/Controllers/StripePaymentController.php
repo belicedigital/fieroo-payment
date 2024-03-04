@@ -78,71 +78,51 @@ class StripePaymentController extends Controller
                 $stripeMetadata
             );
 
-            // Ottenere i dati del cliente da Stripe
-            $stripeCustomer = $request->user()->exhibitor->asStripeCustomer();
-
-            // dd($stripeCharge->payment_intent);
-
-            // Setup Payment Intent
-            // $paymentIntent = PaymentIntent::retrieve($request->);
-
-            // dd($paymentIntent);
-            // Log::info('paymentIntent retrieve');
-            // Log::info($paymentIntent->status);
-
-            // $paymentIntent = $exhibitor->createSetupIntent();
-
-            // dd($stripeCharge);
-
-            // $paymentIntent = PaymentIntent::retrieve($stripeCharge->stripe_id);
-
-            // // se viene richiesto il 3DSecure allora fare redirect di conferma
-            // if ($paymentIntent->status === 'requires_action') {
-            //     Log::info('azione richiesta 3dsecure');
-            //     return redirect()->route('cashier.payment', [
-            //         'payment_intent_client_secret' => $paymentIntent->client_secret,
-            //         'success_url' => route('3dsecure.auth'),
-            //         'cancel_url' => route('3dsecure.auth'),
-            //     ]);
-            // }
-
-            //Insert payment in DB
-            $this->insertPayment($stripeCharge, $stripeCustomer, $authUser, $request, $currency, $totalPrice, $request->stand_selected, $request->modules_selected);
-
-            //Update Exhibitor payment data
-            $this->updateExhibitor($exhibitor, $stripeCharge);
-
-            // send email to user for subscription
-            $subject = trans('emails.event_subscription', [], $exhibitor->locale);
-            $email_from = env('MAIL_FROM_ADDRESS');
-            $email_to = $authUser->email;
-            $setting = Setting::take(1)->first();
-            $emailTemplate = $exhibitor->locale == 'it' ? $setting->email_event_subscription_it : $setting->email_event_subscription_en;
-            $emailFormatData = [
-                'event_title' => $event->title,
-                'event_start' => Carbon::parse($event->start)->format('d/m/Y'),
-                'event_end' => Carbon::parse($event->end)->format('d/m/Y'),
-                'responsible' => $exhibitor->detail->responsible,
-            ];
-
-            $pdfName = 'subscription-confirmation.pdf';
-            $pdfContent = $this->generateOrderPDF($request);
-            $this->sendEmail($subject, $emailFormatData, $emailTemplate, $email_from, $email_to, $pdfContent, $pdfName);
-
-            $email_admin = env('MAIL_ADMIN');
-            $this->sendEmail($subject, $emailFormatData, $emailTemplate, $email_from, $email_admin, $pdfContent, $pdfName);
+            $this->compileDataStripeAndSendMail($request, $stripeCharge, $authUser, $currency, $totalPrice, $exhibitor);
 
             return redirect('admin/dashboard/')
                 ->with('success', trans('generals.payment_subscription_ok', ['event' => $event->title]));
 
         } catch(IncompletePayment $exception) {
-            dd($exception);
-            return redirect()->route('cashier.payment', [$exception->payment->id, 'redirect' => route('3dsecure.auth')]);
+            dd($authUser);
+            return redirect()->route('cashier.payment', [$exception->payment->id, 'redirect' => route('compileDataStripeAndSendMail')]);
         } catch(\Throwable $th){
             return redirect()
                 ->back()
                 ->withErrors($th->getMessage());
         }
+    }
+
+    public function compileDataStripeAndSendMail($request, $stripeCharge, $authUser, $currency, $totalPrice, $exhibitor)
+    {
+        // Ottenere i dati del cliente da Stripe
+        $stripeCustomer = $request->user()->exhibitor->asStripeCustomer();
+
+        //Insert payment in DB
+        $this->insertPayment($stripeCharge, $stripeCustomer, $authUser, $request, $currency, $totalPrice, $request->stand_selected, $request->modules_selected);
+
+        //Update Exhibitor payment data
+        $this->updateExhibitor($exhibitor, $stripeCharge);
+
+        // send email to user for subscription
+        $subject = trans('emails.event_subscription', [], $exhibitor->locale);
+        $email_from = env('MAIL_FROM_ADDRESS');
+        $email_to = $authUser->email;
+        $setting = Setting::take(1)->first();
+        $emailTemplate = $exhibitor->locale == 'it' ? $setting->email_event_subscription_it : $setting->email_event_subscription_en;
+        $emailFormatData = [
+            'event_title' => $event->title,
+            'event_start' => Carbon::parse($event->start)->format('d/m/Y'),
+            'event_end' => Carbon::parse($event->end)->format('d/m/Y'),
+            'responsible' => $exhibitor->detail->responsible,
+        ];
+
+        $pdfName = 'subscription-confirmation.pdf';
+        $pdfContent = $this->generateOrderPDF($request);
+        $this->sendEmail($subject, $emailFormatData, $emailTemplate, $email_from, $email_to, $pdfContent, $pdfName);
+
+        $email_admin = env('MAIL_ADMIN');
+        $this->sendEmail($subject, $emailFormatData, $emailTemplate, $email_from, $email_admin, $pdfContent, $pdfName);
     }
 
     public function auth3DSecure(Request $request)
