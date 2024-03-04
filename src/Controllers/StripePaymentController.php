@@ -71,8 +71,6 @@ class StripePaymentController extends Controller
                 'totalPrice_iva' => $totalPrice_iva,
             ];
 
-            dd('ciao');
-
             $stripeCharge = $this->chargeStripe(
                 $request->user(),
                 $amount_iva,
@@ -81,7 +79,7 @@ class StripePaymentController extends Controller
                 $stripeMetadata
             );
 
-            dd($stripeCharge);
+            // dd($stripeCharge);
 
             // Ottenere i dati del cliente da Stripe
             $stripeCustomer = $request->user()->exhibitor->asStripeCustomer();
@@ -97,19 +95,19 @@ class StripePaymentController extends Controller
 
             // $paymentIntent = $exhibitor->createSetupIntent();
 
-            dd($stripeCharge);
+            // dd($stripeCharge);
 
-            $paymentIntent = PaymentIntent::retrieve($stripeCharge->stripe_id);
+            // $paymentIntent = PaymentIntent::retrieve($stripeCharge->stripe_id);
 
-            // se viene richiesto il 3DSecure allora fare redirect di conferma
-            if ($paymentIntent->status === 'requires_action') {
-                Log::info('azione richiesta 3dsecure');
-                return redirect()->route('cashier.payment', [
-                    'payment_intent_client_secret' => $paymentIntent->client_secret,
-                    'success_url' => route('3dsecure.auth'),
-                    'cancel_url' => route('3dsecure.auth'),
-                ]);
-            }
+            // // se viene richiesto il 3DSecure allora fare redirect di conferma
+            // if ($paymentIntent->status === 'requires_action') {
+            //     Log::info('azione richiesta 3dsecure');
+            //     return redirect()->route('cashier.payment', [
+            //         'payment_intent_client_secret' => $paymentIntent->client_secret,
+            //         'success_url' => route('3dsecure.auth'),
+            //         'cancel_url' => route('3dsecure.auth'),
+            //     ]);
+            // }
 
             //Insert payment in DB
             $this->insertPayment($stripeCharge, $stripeCustomer, $authUser, $request, $currency, $totalPrice, $request->stand_selected, $request->modules_selected);
@@ -330,6 +328,8 @@ class StripePaymentController extends Controller
                 'customer' => $customer->id,
                 'receipt_email' => $authUser->email,
                 'metadata' => $metadata,
+                'confirmation_method' => 'automatic',
+                'confirm' => true,
             ]
         );
     }
