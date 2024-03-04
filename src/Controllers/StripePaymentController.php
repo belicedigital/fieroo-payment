@@ -79,6 +79,8 @@ class StripePaymentController extends Controller
                 $stripeMetadata
             );
 
+            dd($stripeCharge);
+
             // Ottenere i dati del cliente da Stripe
             $stripeCustomer = $request->user()->exhibitor->asStripeCustomer();
 
