@@ -280,15 +280,15 @@ class PaymentController extends Controller
                     return redirect('admin/dashboard/')
                         ->with('success', trans('generals.payment_furnishing_ok', ['event' => $event->title]));
                 } else {
-                    return redirect('admin/events/'.$purchase_data['event_id'])
+                    return redirect('admin/dashboard/')
                         ->withErrors($response->getMessage());
                 }
             } else {
-                return redirect('admin/events/'.$purchase_data['event_id'])
+                return redirect('admin/dashboard/')
                     ->withErrors(trans('generals.payment_declined'));
             }
         } catch(\Throwable $th) {
-            return redirect('admin/events/'.$purchase_data['event_id'])
+            return redirect('admin/dashbpard/')
                 ->withErrors($th->getMessage());
         }
     }
