@@ -247,7 +247,6 @@ class PaymentController extends Controller
 
     public function successFurnishings(Request $request)
     {
-        dd($request);
         if(!Session::has('purchase_data')) {
             abort(500, trans('generals.pay_validation_wrong'));
         }
@@ -545,7 +544,9 @@ class PaymentController extends Controller
         $payment->event_id = $purchase_data['event_id'];
         $payment->user_id = $purchase_data['user_id'];
         $payment->stand_type_id = $purchase_data['stand_type_id'];
-        $payment->n_modules = $purchase_data['n_modules'];
+        if(isset($purchase_data['n_modules'])) {
+            $payment->n_modules = $purchase_data['n_modules'];
+        }
         $payment->type_of_payment = $purchase_data['type_of_payment'];
         $payment->save();
         return $payment;
