@@ -642,7 +642,11 @@ class PaymentController extends Controller
         ];
 
         $pdfName = 'order-confirmation.pdf';
-        $pdfContent = $this->generateOrderPDF($request, 'order');
+        $purchase_data = [
+            'event_id' => $request->event_id,
+            'data' => $request->data,
+        ];
+        $pdfContent = $this->generateOrderPDF($request, $purchase_data, 'order');
 
         $this->sendEmail($subject, $emailFormatData, $emailTemplate, $email_from, $email_to, $pdfContent, $pdfName);
 
@@ -812,7 +816,8 @@ class PaymentController extends Controller
             } else {
 
                 // Add specific data for the order case
-                $rows = json_decode($request->data);
+                $rows = json_decode($purchase_data['data']);
+                // $rows = json_decode($request->data);
 
                 //Get total of items
                 $tot = 0;
