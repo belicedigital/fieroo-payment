@@ -3,10 +3,9 @@
 namespace Fieroo\Payment\Controllers;
 
 use Illuminate\Http\Request;
-use App\Http\Controllers\Controller;
-use Illuminate\Support\Facades\App;
+use Fieroo\Bootstrapper\Controllers\BootstrapperController as Controller;
 use Omnipay\Omnipay;
-use Fieroo\Payment\Models\Payment;
+// use Fieroo\Payment\Models\Payment;
 use Fieroo\Events\Models\Event;
 use Fieroo\Payment\Models\Order;
 use Fieroo\Exhibitors\Models\Exhibitor;
