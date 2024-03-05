@@ -5,7 +5,7 @@ namespace Fieroo\Payment\Controllers;
 use Illuminate\Http\Request;
 use Fieroo\Bootstrapper\Controllers\BootstrapperController as Controller;
 use Omnipay\Omnipay;
-// use Fieroo\Payment\Models\Payment;
+use Fieroo\Payment\Models\Payment;
 use Fieroo\Events\Models\Event;
 use Fieroo\Payment\Models\Order;
 use Fieroo\Exhibitors\Models\Exhibitor;
@@ -73,10 +73,10 @@ class PaymentController extends Controller
 
             $price = $stand->price;
             $amount = $stand->price * $request->modules_selected;
-            $amount_iva = $amount * 1.22;
+            // $amount_iva = $amount * 1.22;
 
             $response = $this->gateway->purchase([
-                'amount' => $amount_iva,
+                'amount' => $amount,
                 'currency' => env('PAYPAL_CURRENCY'),
                 'returnUrl' => url('/admin/paypal/success'),
                 'cancelUrl' => url('/admin/paypal/error'),
@@ -155,7 +155,7 @@ class PaymentController extends Controller
                 $tot += $row->price;
             }
 
-            $tot = $tot * 1.22;
+            // $tot = $tot * 1.22;
 
             if($tot > 0) {
                 $response = $this->gateway->purchase([
