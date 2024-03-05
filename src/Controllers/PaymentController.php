@@ -336,6 +336,7 @@ class PaymentController extends Controller
 
     public function sendFurnishingEmails($exhibitor, $authUser, $locale, $isToAdmin, $total, $request)
     {
+        dd($request);
         // Send email to exhibitor
         $subject = trans('emails.confirm_order', [], $locale);
         $email_from = env('MAIL_FROM_ADDRESS');
