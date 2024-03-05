@@ -371,8 +371,7 @@ class PaymentController extends Controller
                     ];
 
                     $pdfName = 'subscription-confirmation.pdf';
-                    $pdfContent = $this->generateOrderPDF($request);
-                    // dd($pdfContent);
+                    $pdfContent = $this->generateOrderPDF($request, $purchase_data);
                     $this->sendEmail($subject, $emailFormatData, $emailTemplate, $email_from, $email_to, $pdfContent, $pdfName);
 
                     $email_admin = env('MAIL_ADMIN');
@@ -667,12 +666,105 @@ class PaymentController extends Controller
         }
     }
 
-    public function generateOrderPDF(Request $request, string $typeOfPDF = 'subscription')
+    // public function generateOrderPDF(Request $request, string $typeOfPDF = 'subscription')
+    // {
+    //     dd($request);
+    //     try {
+    //         //Event and setting data
+    //         $event = Event::findOrFail($request->event_id);
+    //         $setting = Setting::take(1)->first();
+
+    //         // Create a DOMPDF object
+    //         $pdfOptions = new Options();
+    //         $pdfOptions->set('isHtml5ParserEnabled', true);
+    //         $pdfOptions->set('isPhpEnabled', true);
+    //         $pdfOptions->set('isRemoteEnabled', true);
+    //         $pdfOptions->set('defaultMediaType', 'all');
+    //         $pdfOptions->setDefaultFont('dejavu sans');
+    //         $pdf = new Dompdf($pdfOptions);
+
+    //         // Exhibitor data
+    //         $exhibitor = auth()->user()->exhibitor;
+    //         $data_for_billing = $this->getExhibitorData($exhibitor);
+
+    //         // Create a common set of data
+    //         $commonData = [
+    //             'event' => $event,
+    //             'iva' => $setting->iva,
+    //             'exhibitor' => $data_for_billing,
+    //             'paymentId' => $request->paymentMethodId
+    //         ];
+
+    //         if ($typeOfPDF == 'subscription') {
+
+    //             //Stand data for subscription event
+    //             $stand = StandsTypeTranslation::where([
+    //                 ['stand_type_id', '=', $request->stand_selected],
+    //                 ['locale', '=', $exhibitor->locale]
+    //             ])->firstOrFail();
+    //             $totalPrice = $stand->price * $request->modules_selected;
+
+    //             // Calculate tax and total
+    //             $totalTax = $totalPrice/100 * $setting->iva;
+    //             $totalTaxIncl = $totalPrice + $totalTax;
+
+    //             // Add specific data for the 'subscription' type
+    //             $pdfView = view('payment::pdf.subscription-conf',  array_merge($commonData,  [
+    //                 'totalPrice' => $totalPrice,
+    //                 'totalTaxIncl' => $totalTaxIncl,
+    //                 'totalTax' => $totalTax,
+    //                 'stand' => $stand,
+    //                 'qty' => $request->modules_selected,
+    //             ]));
+    //         } else {
+
+    //             // Add specific data for the order case
+    //             $rows = json_decode($request->data);
+
+    //             //Get total of items
+    //             $tot = 0;
+    //             foreach($rows as $row) {
+    //                 $tot += $row->price;
+    //             }
+
+    //             // Calculate tax and total
+    //             $totTax = $tot/100 * $setting->iva;
+    //             $totTaxIncl = $tot + $totTax;
+
+    //             $pdfView = view('payment::pdf.order-conf', array_merge($commonData, [
+    //                 'orders' => $this->getOrders($exhibitor->id, $request->event_id, null, $exhibitor->locale),
+    //                 'ordersTot' => $tot,
+    //                 'ordersTotTaxIncl' => $totTaxIncl,
+    //                 'totTax' => $totTax
+    //             ]));
+    //         }
+
+    //         // Convert to Html
+    //         $html = $pdfView->render();
+
+    //         // Load HTML in Dompdf
+    //         $pdf->loadHtml($html);
+
+    //         // Set rendering option
+    //         $pdf->setPaper('A4');
+
+    //         // Render PDF
+    //         $pdf->render();
+
+    //         return $pdf->output();
+
+    //     } catch (\Throwable $th) {
+    //         return redirect()
+    //             ->back()
+    //             ->withErrors($th->getMessage());
+    //     }
+    // }
+
+    public function generateOrderPDF(Request $request, $purchase_data, string $typeOfPDF = 'subscription')
     {
-        dd($request);
         try {
             //Event and setting data
-            $event = Event::findOrFail($request->event_id);
+            $event = Event::findOrFail($purchase_data['event_id']);
             $setting = Setting::take(1)->first();
 
             // Create a DOMPDF object
@@ -700,10 +792,10 @@ class PaymentController extends Controller
 
                 //Stand data for subscription event
                 $stand = StandsTypeTranslation::where([
-                    ['stand_type_id', '=', $request->stand_selected],
+                    ['stand_type_id', '=', $purchase_data['stand_type_id']],
                     ['locale', '=', $exhibitor->locale]
                 ])->firstOrFail();
-                $totalPrice = $stand->price * $request->modules_selected;
+                $totalPrice = $stand->price * $purchase_data['n_modules'];
 
                 // Calculate tax and total
                 $totalTax = $totalPrice/100 * $setting->iva;
@@ -715,7 +807,7 @@ class PaymentController extends Controller
                     'totalTaxIncl' => $totalTaxIncl,
                     'totalTax' => $totalTax,
                     'stand' => $stand,
-                    'qty' => $request->modules_selected,
+                    'qty' => $purchase_data['n_modules'],
                 ]));
             } else {
 
@@ -733,7 +825,7 @@ class PaymentController extends Controller
                 $totTaxIncl = $tot + $totTax;
 
                 $pdfView = view('payment::pdf.order-conf', array_merge($commonData, [
-                    'orders' => $this->getOrders($exhibitor->id, $request->event_id, null, $exhibitor->locale),
+                    'orders' => $this->getOrders($exhibitor->id, $purchase_data['event_id'], null, $exhibitor->locale),
                     'ordersTot' => $tot,
                     'ordersTotTaxIncl' => $totTaxIncl,
                     'totTax' => $totTax
