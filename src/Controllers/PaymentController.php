@@ -170,7 +170,18 @@ class PaymentController extends Controller
                     $this->insertOrder($exhibitor->id, $row, $request->event_id);
                 }
 
-                $this->sendFurnishingEmails($exhibitor, $authUser, $exhibitor->locale, true, $tot, $request);
+                $purchase_data = [
+                    'event_id' => $request->event_id,
+                    'user_id' => auth()->user()->id,
+                    'exhibitor_id' => $exhibitor->id,
+                    'stand_type_id' => $request->stand_type_id,
+                    'type_of_payment' => $request->type_of_payment, // furnishing
+                    'rows' => $rows,
+                    'tot' => $totalTaxIncl
+                ];
+
+                // $this->sendFurnishingEmails($exhibitor, $authUser, $exhibitor->locale, true, $tot, $request);
+                $this->sendFurnishingEmails($request, $purchase_data, true);
                 
                 return redirect('admin/dashboard/')
                     ->with('success', trans('generals.payment_furnishing_ok', ['event' => $event->title]));
@@ -274,8 +285,10 @@ class PaymentController extends Controller
                     $event = Event::findOrFail($purchase_data['event_id']);
                     $authUser = auth()->user();
                     $exhibitor = $authUser->exhibitor;
+    
+                    $this->sendFurnishingEmails($request, $purchase_data, true);
 
-                    $this->sendFurnishingEmails($exhibitor, $authUser, $exhibitor->locale, true, $purchase_data['tot'], $request);
+                    // $this->sendFurnishingEmails($exhibitor, $authUser, $exhibitor->locale, true, $purchase_data['tot'], $request);
 
                     return redirect('admin/dashboard/')
                         ->with('success', trans('generals.payment_furnishing_ok', ['event' => $event->title]));
@@ -334,13 +347,14 @@ class PaymentController extends Controller
         return $query->get();
     }
 
-    public function sendFurnishingEmails($exhibitor, $authUser, $locale, $isToAdmin, $total, $request)
+    public function sendFurnishingEmails(Request $request, $purchase_data, $isToAdmin)
     {
-        dd($request);
         // Send email to exhibitor
+        $user = User::findOrFail($purchase_data['user_id']);
+        $locale = $user->exhibitor->locale;
         $subject = trans('emails.confirm_order', [], $locale);
         $email_from = env('MAIL_FROM_ADDRESS');
-        $email_to = $authUser->email;
+        $email_to = $user->email;
 
         $setting = Setting::take(1)->first();
         $emailTemplate = $locale == 'it' ? $setting->email_confirm_order_it : $setting->email_confirm_order_en;
@@ -352,19 +366,19 @@ class PaymentController extends Controller
             'price' => trans('tables.price', [], $locale),
         ];
 
-        $orders = $this->getOrders($exhibitor->id, $request->event_id, null, $locale);
+        $orders = $this->getOrders($purchase_data['exhibitor_id'], $purchase_data['event_id'], null, $locale);
         $orders_txt = $this->generateOrderEmailSummary($orders, $labels);
 
         $emailFormatData = [
             'orders' => $orders_txt,
-            'tot' => $total,
+            'tot' => $purchase_data['tot'],
         ];
 
         $pdfName = 'order-confirmation.pdf';
-        $purchase_data = [
-            'event_id' => $request->event_id,
-            'data' => $request->data,
-        ];
+        // $purchase_data = [
+        //     'data' => $request->data,
+        // ];
+        $purchase_data['data'] = $purchase_data['rows'];
         $pdfContent = $this->generateOrderPDF($request, $purchase_data, 'order');
 
         $this->sendEmail($subject, $emailFormatData, $emailTemplate, $email_from, $email_to, $pdfContent, $pdfName);
@@ -376,13 +390,13 @@ class PaymentController extends Controller
             $admin_mail_email_to = env('MAIL_ADMIN');
 
             $emailTemplateAdmin = $setting->email_to_admin_notification_confirm_order;
-            $ordersAdmin = $this->getOrders($exhibitor->id, $request->event_id, null, 'it');
+            $ordersAdmin = $this->getOrders($purchase_data['exhibitor_id'], $purchase_data['event_id'], null, 'it');
             $orders_txt_admin = $this->generateOrderEmailSummary($ordersAdmin, $labels);
 
             $emailFormatDataAdmin = [
                 'orders' => $orders_txt_admin,
                 'tot' => $total,
-                'company' => $exhibitor->detail->company,
+                'company' => $user->exhibitor->detail->company,
             ];
 
             $this->sendEmail($admin_mail_subject, $emailFormatDataAdmin, $emailTemplateAdmin, $email_from, $admin_mail_email_to, $pdfContent, $pdfName);
