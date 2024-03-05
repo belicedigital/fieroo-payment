@@ -73,10 +73,17 @@ class PaymentController extends Controller
 
             $price = $stand->price;
             $amount = $stand->price * $request->modules_selected;
+
+            $setting = Setting::take(1)->first();
+
+            $totalPrice = $stand->price * $request->modules_selected;
+            // Calculate tax and total
+            $totalTax = $totalPrice/100 * $setting->iva;
+            $totalTaxIncl = $totalPrice + $totalTax;
             // $amount_iva = $amount * 1.22;
 
             $response = $this->gateway->purchase([
-                'amount' => $amount,
+                'amount' => $totalTaxIncl,
                 'currency' => env('PAYPAL_CURRENCY'),
                 'returnUrl' => url('/admin/paypal/success'),
                 'cancelUrl' => url('/admin/paypal/error'),
