@@ -853,6 +853,44 @@ class PaymentController extends Controller
         }
     }
 
+    public function getExhibitorData($exhibitor) {
+        $exhibitor_detail = $exhibitor->detail;
+
+        $data_for_billing = [
+            'address' => [
+                'city' => $exhibitor_detail->city,
+                'postal_code' => $exhibitor_detail->cap,
+                'state' => $exhibitor_detail->province,
+                'line1' => $exhibitor_detail->address.', '.$exhibitor_detail->civic_number,
+            ],
+            'email' => $exhibitor_detail->email_responsible,
+            'name' => $exhibitor_detail->responsible,
+            'phone' => $exhibitor_detail->phone_responsible,
+            'preferred_locales' => [ $exhibitor->locale ],
+            'company' => $exhibitor_detail->company,
+            'vat_number' => $exhibitor_detail->vat_number
+        ];
+
+        if($exhibitor_detail->diff_billing) {
+            $data_for_billing = [
+                'address' => [
+                    'city' => $exhibitor_detail->receiver_city,
+                    'postal_code' => $exhibitor_detail->receiver_cap,
+                    'state' => $exhibitor_detail->receiver_province,
+                    'line1' => $exhibitor_detail->receiver_address.', '.$exhibitor_detail->receiver_civic_number,
+                ],
+                'email' => $exhibitor->user->email,
+                'name' => $exhibitor_detail->responsible,
+                'phone' => $exhibitor_detail->phone_responsible,
+                'preferred_locales' => [ $exhibitor->locale ],
+                'company' => $exhibitor_detail->company,
+                'vat_number' => $exhibitor_detail->receiver_vat_number
+            ];
+        }
+
+        return $data_for_billing;
+    }
+
     public function generateOrderEmailSummary($orders, $labels)
     {
         $orders_txt = '<dl>';
