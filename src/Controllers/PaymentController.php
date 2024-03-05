@@ -379,6 +379,7 @@ class PaymentController extends Controller
         //     'data' => $request->data,
         // ];
         $purchase_data['data'] = json_encode($purchase_data['rows']);
+        
         $pdfContent = $this->generateOrderPDF($request, $purchase_data, 'order');
 
         $this->sendEmail($subject, $emailFormatData, $emailTemplate, $email_from, $email_to, $pdfContent, $pdfName);
