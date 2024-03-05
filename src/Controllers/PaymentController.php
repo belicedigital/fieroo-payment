@@ -372,7 +372,7 @@ class PaymentController extends Controller
 
                     $pdfName = 'subscription-confirmation.pdf';
                     $pdfContent = $this->generateOrderPDF($request);
-                    dd($pdfContent);
+                    // dd($pdfContent);
                     $this->sendEmail($subject, $emailFormatData, $emailTemplate, $email_from, $email_to, $pdfContent, $pdfName);
 
                     $email_admin = env('MAIL_ADMIN');
@@ -669,6 +669,7 @@ class PaymentController extends Controller
 
     public function generateOrderPDF(Request $request, string $typeOfPDF = 'subscription')
     {
+        dd($request);
         try {
             //Event and setting data
             $event = Event::findOrFail($request->event_id);
