@@ -275,7 +275,7 @@ class PaymentController extends Controller
                     $authUser = auth()->user();
                     $exhibitor = $authUser->exhibitor;
 
-                    $this->sendFurnishingEmails($exhibitor, $authUser, $exhibitor->locale, true, $tot, $request);
+                    $this->sendFurnishingEmails($exhibitor, $authUser, $exhibitor->locale, true, $purchase_data['tot'], $request);
 
                     return redirect('admin/dashboard/')
                         ->with('success', trans('generals.payment_furnishing_ok', ['event' => $event->title]));
