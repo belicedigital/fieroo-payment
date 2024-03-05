@@ -43,7 +43,9 @@ class PaymentController extends Controller
         try {
             $validation_data = [
                 'stand_selected' => ['required', 'exists:stands_types,id'],
-                'modules_selected' => ['required', 'numeric', 'min:1']
+                'modules_selected' => ['required', 'numeric', 'min:1'],
+                'event_id' => ['required', 'exists:events,id'],
+                'type_of_payment' => ['required', 'in:subscription,furnishing'],
             ];
     
             $validator = Validator::make($request->all(), $validation_data);
@@ -370,6 +372,7 @@ class PaymentController extends Controller
 
                     $pdfName = 'subscription-confirmation.pdf';
                     $pdfContent = $this->generateOrderPDF($request);
+                    dd($pdfContent);
                     $this->sendEmail($subject, $emailFormatData, $emailTemplate, $email_from, $email_to, $pdfContent, $pdfName);
 
                     $email_admin = env('MAIL_ADMIN');
