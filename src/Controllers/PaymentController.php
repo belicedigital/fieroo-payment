@@ -395,7 +395,7 @@ class PaymentController extends Controller
 
             $emailFormatDataAdmin = [
                 'orders' => $orders_txt_admin,
-                'tot' => $total,
+                'tot' => $purchase_data['tot'],
                 'company' => $user->exhibitor->detail->company,
             ];
 
