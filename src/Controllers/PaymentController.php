@@ -82,6 +82,7 @@ class PaymentController extends Controller
             // Calculate tax and total
             $totalTax = $totalPrice/100 * $setting->iva;
             $totalTaxIncl = $totalPrice + $totalTax;
+            $totalTaxIncl = round($totalTaxIncl, 2);
 
             $response = $this->gateway->purchase([
                 'amount' => $totalTaxIncl,
