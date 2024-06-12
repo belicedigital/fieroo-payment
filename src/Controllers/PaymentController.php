@@ -7,6 +7,7 @@ use Fieroo\Bootstrapper\Controllers\BootstrapperController as Controller;
 use Omnipay\Omnipay;
 use Fieroo\Payment\Models\Payment;
 use Fieroo\Events\Models\Event;
+use Fieroo\Events\Models\CouponUser;
 use Fieroo\Payment\Models\Order;
 use Fieroo\Exhibitors\Models\Exhibitor;
 use Fieroo\Bootstrapper\Models\User;
@@ -63,12 +64,21 @@ class PaymentController extends Controller
                 ['locale', '=', $exhibitor->locale]
             ])->firstOrFail();
 
-            $price = $stand->price;
-            $amount = $stand->price * $request->modules_selected;
+            // $price = $stand->price;
+            // $amount = $stand->price * $request->modules_selected;
 
             $setting = Setting::take(1)->first();
 
             $totalPrice = $stand->price * $request->modules_selected;
+
+            // check if user has coupon assigned
+            $userCoupon = CouponUser::where('user_id', auth()->user()->id)->first();
+            if(is_object($userCoupon)) {
+                $discount = $userCoupon->coupon->percentage;
+                $discountAmount = ($discount/100)*$totalPrice;
+                $totalPrice = $totalPrice - $discountAmount;
+            }
+
             // Calculate tax and total
             $totalTax = $totalPrice/100 * $setting->iva;
             $totalTaxIncl = $totalPrice + $totalTax;
