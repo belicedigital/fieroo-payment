@@ -7,7 +7,7 @@
 
                     <table align="center" border="0" cellpadding="0" cellspacing="0" width="100%"
                         style="max-width:600px;">
-                        @include('partials.email-header')
+                        @include('_partials.email-header')
                         <tr>
                             <td align="center" style="padding: 35px 35px 20px 35px; background-color: #ffffff;"
                                 bgcolor="#ffffff">
@@ -138,7 +138,7 @@
                         </tr>
                         <tr>
                             <td>
-                                @include('partials.email-footer')
+                                @include('_partials.email-footer')
                             </td>
                         </tr>
                     </table>
