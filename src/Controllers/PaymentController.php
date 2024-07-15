@@ -312,7 +312,7 @@ class PaymentController extends Controller
                     ->withErrors(trans('generals.payment_declined'));
             }
         } catch(\Throwable $th) {
-            return redirect('admin/dashbaard/')
+            return redirect('admin/dashboard/')
                 ->withErrors($th->getMessage());
         }
     }
