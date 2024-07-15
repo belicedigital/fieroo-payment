@@ -3,6 +3,7 @@
 namespace Fieroo\Payment\Controllers;
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Fieroo\Bootstrapper\Controllers\BootstrapperController as Controller;
 use Omnipay\Omnipay;
 use Fieroo\Payment\Models\Payment;
@@ -226,6 +227,7 @@ class PaymentController extends Controller
                 if($response->isSuccessful()) {
                     $arr = $response->getData();
                     $this->insertPayment($arr, $purchase_data);
+                    Log::info('insert payment success');
 
                     // get the data
                     $event = Event::findOrFail($purchase_data['event_id']);
@@ -246,10 +248,13 @@ class PaymentController extends Controller
 
                     $pdfName = 'subscription-confirmation.pdf';
                     $pdfContent = $this->generateOrderPDF($request, $purchase_data);
+                    Log::info('pdf order generared with success');
                     $this->sendEmail($subject, $emailFormatData, $emailTemplate, $email_from, $email_to, $pdfContent, $pdfName);
+                    Log::info('email sent with success');
 
                     $email_admin = env('MAIL_ADMIN');
                     $this->sendEmail($subject, $emailFormatData, $emailTemplate, $email_from, $email_admin, $pdfContent, $pdfName);
+                    Log::info('email to admin sent with success');
 
                     return redirect('admin/dashboard/')
                         ->with('success', trans('generals.payment_subscription_ok', ['event' => $event->title]));
